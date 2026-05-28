@@ -1315,3 +1315,53 @@ carregar()
 </html>
 """
 
+@app.get("/seed")
+def seed(db: Session = Depends(get_db)):
+
+    enderecos_base = [
+
+        "R07 014 1",
+        "R07 016 1",
+        "R07 018 1",
+        "R07 020 1",
+        "R07 022 1",
+        "R07 024 1",
+        "R07 026 1",
+        "R07 028 1",
+
+        "R07 014 1F",
+        "R07 016 1F",
+        "R07 018 1F",
+        "R07 020 1F",
+        "R07 022 1F",
+        "R07 024 1F",
+        "R07 026 1F",
+        "R07 028 1F",
+
+    ]
+
+    criados = 0
+
+    for codigo in enderecos_base:
+
+        existe = db.query(models.Endereco).filter(
+            models.Endereco.codigo == codigo
+        ).first()
+
+        if not existe:
+
+            novo = models.Endereco(
+                codigo=codigo,
+                capacidade_total=1,
+                capacidade_usada=0
+            )
+
+            db.add(novo)
+            criados += 1
+
+    db.commit()
+
+    return {
+        "status":"ok",
+        "enderecos_criados":criados
+    }
