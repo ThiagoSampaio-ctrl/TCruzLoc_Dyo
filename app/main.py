@@ -1319,39 +1319,43 @@ carregar()
 def seed(db: Session = Depends(get_db)):
 
     enderecos_base = [
+        ("R07 014 1", "R07", "014", "1"),
+        ("R07 016 1", "R07", "016", "1"),
+        ("R07 018 1", "R07", "018", "1"),
+        ("R07 020 1", "R07", "020", "1"),
+        ("R07 022 1", "R07", "022", "1"),
+        ("R07 024 1", "R07", "024", "1"),
+        ("R07 026 1", "R07", "026", "1"),
+        ("R07 028 1", "R07", "028", "1"),
 
-        "R07 014 1",
-        "R07 016 1",
-        "R07 018 1",
-        "R07 020 1",
-        "R07 022 1",
-        "R07 024 1",
-        "R07 026 1",
-        "R07 028 1",
-
-        "R07 014 1F",
-        "R07 016 1F",
-        "R07 018 1F",
-        "R07 020 1F",
-        "R07 022 1F",
-        "R07 024 1F",
-        "R07 026 1F",
-        "R07 028 1F",
-
+        ("R07 014 1F", "R07", "014", "1F"),
+        ("R07 016 1F", "R07", "016", "1F"),
+        ("R07 018 1F", "R07", "018", "1F"),
+        ("R07 020 1F", "R07", "020", "1F"),
+        ("R07 022 1F", "R07", "022", "1F"),
+        ("R07 024 1F", "R07", "024", "1F"),
+        ("R07 026 1F", "R07", "026", "1F"),
+        ("R07 028 1F", "R07", "028", "1F"),
     ]
 
     criados = 0
 
-    for codigo in enderecos_base:
+    for codigo, rua, predio, andar in enderecos_base:
 
         existe = db.query(models.Endereco).filter(
             models.Endereco.codigo == codigo
         ).first()
 
         if not existe:
-
             novo = models.Endereco(
                 codigo=codigo,
+                rua=rua,
+                predio=predio,
+                andar=andar,
+                frente="A",
+                comprimento_cm=100,
+                largura_cm=100,
+                altura_cm=100,
                 capacidade_total=1,
                 capacidade_usada=0
             )
@@ -1362,6 +1366,6 @@ def seed(db: Session = Depends(get_db)):
     db.commit()
 
     return {
-        "status":"ok",
-        "enderecos_criados":criados
+        "status": "ok",
+        "enderecos_criados": criados
     }
