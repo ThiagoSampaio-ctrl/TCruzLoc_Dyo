@@ -25,8 +25,10 @@ def criar_palete_auto(db: Session, palete: schema.PaleteCriar):
         return existente
 
     endereco = db.query(models.Endereco).filter(
-        models.Endereco.capacidade_usada < models.Endereco.capacidade_total
-    ).order_by(models.Endereco.id).first()
+        models.Endereco.capacidade_usada == 0
+    ).order_by(
+        models.Endereco.id
+    ).first()
 
     if not endereco:
         raise HTTPException(
@@ -44,6 +46,8 @@ def criar_palete_auto(db: Session, palete: schema.PaleteCriar):
         endereco_codigo=endereco.codigo,
         status="ENDERECADO"
     )
+
+    endereco.capacidade_usada = 1
 
     db.add(novo)
     db.commit()
