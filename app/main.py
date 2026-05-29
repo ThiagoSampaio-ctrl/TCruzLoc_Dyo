@@ -1402,3 +1402,19 @@ def seed(db: Session = Depends(get_db)):
         "status":"ok",
         "enderecos_criados": criados
     }
+@app.get("/reset-teste")
+def reset_teste(db: Session = Depends(get_db)):
+
+    db.query(models.PedidoVolume).delete()
+    db.query(models.Palete).delete()
+
+    db.query(models.Endereco).update({
+        "capacidade_usada": 0
+    })
+
+    db.commit()
+
+    return {
+        "status": "ok",
+        "mensagem": "Paletes e volumes apagados. Endereços liberados."
+    }
