@@ -769,8 +769,7 @@ async function cadastrarVolume(){
             document.getElementById("volume_total").value.trim()
         )
 
-    const palete =
-        document.getElementById("palete").value.trim()
+    const palete = paleteAtual
 
     const resultado =
         document.getElementById("resultado")
@@ -934,6 +933,24 @@ pre{background:#000;color:#00ff88;padding:25px;font-size:22px;white-space:pre-wr
 let resumo = []
 let enderecoPalete= ""
 
+let paleteAtual = ""
+
+async function gerarProximoPalete(){
+    const resposta = await fetch("/paletes")
+    const paletes = await resposta.json()
+
+    let maior = 0
+
+    paletes.forEach(p=>{
+        const numero = parseInt(p.codigo.replace("PAL",""))
+        if(numero > maior){
+            maior = numero
+        }
+    })
+
+    return "PAL" + String(maior + 1).padStart(3,"0")
+}
+
 function formatarVolume(num,total){
     return String(num).padStart(3,"0") + "/" + String(total).padStart(3,"0")
 }
@@ -941,6 +958,7 @@ function formatarVolume(num,total){
 async function adicionarAoPalete(){
 
     const palete = await gerarProximoPalete()
+    paleteAtual = palete
     const pedido = document.getElementById("pedido").value.trim()
     const inicial = parseInt(document.getElementById("vol_inicial").value)
     const final = parseInt(document.getElementById("vol_final").value)
@@ -1090,8 +1108,7 @@ function renderResumo(){
 }
 function finalizarPalete(){
 
-    const palete =
-        document.getElementById("palete").value.trim()
+    const palete = paleteAtual
 
     if(!palete){
 
