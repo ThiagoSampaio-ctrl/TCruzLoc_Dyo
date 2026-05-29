@@ -32,19 +32,11 @@ class CaixaResposta(BaseModel):
 
 class PaleteCriar(BaseModel):
     codigo: str
-    qtd_k0: int = 0
-    qtd_k1: int = 0
-    qtd_k2: int = 0
-    qtd_k3: int = 0
 
 
 class PaleteResposta(BaseModel):
     id: int
     codigo: str
-    qtd_k0: int
-    qtd_k1: int
-    qtd_k2: int
-    qtd_k3: int
     volume_total: int
     endereco_codigo: str
     status: str
@@ -74,3 +66,15 @@ class PedidoVolumeResposta(BaseModel):
 
 class DeletarVolumes(BaseModel):
     ids: list[int]
+
+class PaleteCriar(BaseModel):
+    codigo: str
+
+
+class PaleteManualCriar(BaseModel):
+    codigo_palete: str
+    codigo_endereco: str
+
+class PaleteManualCriar(BaseModel):
+    codigo_palete: str
+    codigo_endereco: str
