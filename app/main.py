@@ -898,9 +898,12 @@ pre{background:#000;color:#00ff88;padding:25px;font-size:22px;white-space:pre-wr
 <h1>TCruzLoc_Dyo</h1>
 <h2>Montagem Inteligente de Palete</h2>
 
-<div style="color:#00ff88;font-size:18px;margin-bottom:15px;">
-    Palete será gerado automaticamente pelo sistema.
-</div>
+<label>Palete</label>
+<input id="palete" placeholder="Ex: PAL001" autofocus>
+
+<label>Endereço</label>
+<input id="endereco" placeholder="Ex: R07 014 1">
+
 <hr>
 
 <label>Pedido</label>
@@ -910,14 +913,8 @@ pre{background:#000;color:#00ff88;padding:25px;font-size:22px;white-space:pre-wr
 <div><label>Vol. inicial</label><input id="vol_inicial" placeholder="1"></div>
 <div><label>Vol. final</label><input id="vol_final" placeholder="6"></div>
 <div><label>Total pedido</label><input id="vol_total" placeholder="10"></div>
-<div><label>K0</label><input id="k0" placeholder="0"></div>
 </div>
 
-<div class="grid">
-<div><label>K1</label><input id="k1" placeholder="0"></div>
-<div><label>K2</label><input id="k2" placeholder="0"></div>
-<div><label>K3</label><input id="k3" placeholder="0"></div>
-</div>
 
 <button onclick="adicionarAoPalete()">Adicionar ao Palete</button>
 
@@ -931,25 +928,6 @@ pre{background:#000;color:#00ff88;padding:25px;font-size:22px;white-space:pre-wr
 
 <script>
 let resumo = []
-let enderecoPalete= ""
-
-let paleteAtual = ""
-
-async function gerarProximoPalete(){
-    const resposta = await fetch("/paletes")
-    const paletes = await resposta.json()
-
-    let maior = 0
-
-    paletes.forEach(p=>{
-        const numero = parseInt(p.codigo.replace("PAL",""))
-        if(numero > maior){
-            maior = numero
-        }
-    })
-
-    return "PAL" + String(maior + 1).padStart(3,"0")
-}
 
 function formatarVolume(num,total){
     return String(num).padStart(3,"0") + "/" + String(total).padStart(3,"0")
@@ -957,21 +935,17 @@ function formatarVolume(num,total){
 
 async function adicionarAoPalete(){
 
-    const palete = await gerarProximoPalete()
-    paleteAtual = palete
+    cconst palete = document.getElementById("palete").value.trim()
+    const endereco = document.getElementById("endereco").value.trim()  
     const pedido = document.getElementById("pedido").value.trim()
     const inicial = parseInt(document.getElementById("vol_inicial").value)
     const final = parseInt(document.getElementById("vol_final").value)
     const total = parseInt(document.getElementById("vol_total").value)
 
-    const k0 = parseInt(document.getElementById("k0").value || 0)
-    const k1 = parseInt(document.getElementById("k1").value || 0)
-    const k2 = parseInt(document.getElementById("k2").value || 0)
-    const k3 = parseInt(document.getElementById("k3").value || 0)
 
     const resultado = document.getElementById("resultado")
 
-    if(!palete || !pedido || !inicial || !final || !total){
+    if(!palete || !endereco || !pedido || !inicial || !final || !total){
         resultado.textContent = "Preencha palete, pedido e volumes."
         return
     }
@@ -1418,3 +1392,14 @@ def reset_teste(db: Session = Depends(get_db)):
         "status": "ok",
         "mensagem": "Paletes e volumes apagados. Endereços liberados."
     }
+
+@app.post("/paletes/manual")
+def criar_palete_manual(
+    dados: schema.PaleteManualCriar,
+    db: Session = Depends(get_db)
+):
+    return crud.criar_ou_usar_palete_manual(
+        db,
+        dados.codigo_palete,
+        dados.codigo_endereco
+    )
