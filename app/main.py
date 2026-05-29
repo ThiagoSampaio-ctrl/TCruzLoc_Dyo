@@ -957,25 +957,20 @@ async function adicionarAoPalete(){
 
     resultado.textContent = "⏳ Criando/verificando palete..."
 
-    const criarPalete = await fetch("/paletes/auto", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            codigo: palete,
-            qtd_k0: k0,
-            qtd_k1: k1,
-            qtd_k2: k2,
-            qtd_k3: k3
-        })
+    const criarPalete = await fetch("/paletes/manual", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+        codigo_palete: palete,
+        codigo_endereco: endereco
     })
+})
+const paleteResp = await criarPalete.json()
 
-    const paleteResp = await criarPalete.json()
-    enderecoPalete = paleteResp.endereco_codigo
-
-    if(paleteResp.detail){
-        resultado.textContent = paleteResp.detail
-        return
-    }
+if(paleteResp.detail){
+    resultado.textContent = paleteResp.detail
+    return
+}
 
     resultado.textContent = "⏳ Cadastrando volumes..."
 
@@ -999,24 +994,25 @@ async function adicionarAoPalete(){
         }
     }
 
-    resumo.push({pedido, inicial, final, total, k0, k1, k2, k3})
-    renderResumo()
+resumo.push({palete, endereco, pedido, inicial, final, total})
+
+renderResumo()
 
     document.getElementById("pedido").value=""
     document.getElementById("vol_inicial").value=""
     document.getElementById("vol_final").value=""
     document.getElementById("vol_total").value=""
-    document.getElementById("k0").value=""
-    document.getElementById("k1").value=""
-    document.getElementById("k2").value=""
-    document.getElementById("k3").value=""
-    document.getElementById("pedido").focus()
-}
+    
 function renderResumo(){
 
-     const palete = paleteAtual
+    const palete = resumo.length > 0 ? resumo[0].palete : ""
+    const endereco = resumo.length > 0 ? resumo[0].endereco : ""
 
-     let agrupado = {}
+    let agrupado = {}
+
+    let texto =
+        "PALETE: " + palete + "\n" +
+        "ENDEREÇO: " + endereco + "\n\n"
 
      
      resumo.forEach(item=>{
@@ -1027,10 +1023,6 @@ function renderResumo(){
                 inicial:item.inicial,
                 final:item.final,
                 total:item.total,
-                k0:item.k0,
-                k1:item.k1,
-                k2:item.k2,
-                k3:item.k3
             }
 
         }else{
@@ -1067,13 +1059,7 @@ function renderResumo(){
                 item.final,
                 item.total
             ) + "\\n"
-
-        texto +=
-            "K0:"+item.k0+
-            " | K1:"+item.k1+
-            " | K2:"+item.k2+
-            " | K3:"+item.k3+
-            "\\n\\n"
+        texto += "\n"
     }
 
     document
@@ -1082,64 +1068,28 @@ function renderResumo(){
 }
 function finalizarPalete(){
 
-    const palete = paleteAtual
+    const palete = document.getElementById("palete").value.trim()
+    const endereco = document.getElementById("endereco").value.trim()
 
     if(!palete){
-
-        document.getElementById("resultado")
-            .textContent =
-            "Informe o palete."
-
+        document.getElementById("resultado").textContent = "Informe o palete."
         return
     }
 
     if(resumo.length===0){
-
-        document.getElementById("resultado")
-            .textContent =
-            "Nenhum pedido adicionado."
-
+        document.getElementById("resultado").textContent = "Nenhum pedido adicionado."
         return
     }
 
-    let totalK0=0
-    let totalK1=0
-    let totalK2=0
-    let totalK3=0
+    let texto = ""
 
-    resumo.forEach(item=>{
+    texto += "PALETE FINALIZADO\n\n"
+    texto += "PALETE: " + palete + "\n"
+    texto += "ENDEREÇO: " + endereco + "\n\n"
+    texto += "STATUS: EM USO"
 
-        totalK0 += item.k0
-        totalK1 += item.k1
-        totalK2 += item.k2
-        totalK3 += item.k3
-
-    })
-
-    let texto=""
-
-    texto+="PALETE FINALIZADO\\n\\n"
-
-    texto+="PALETE: "+palete+"\\n"
-
-    texto+="ENDEREÇO: "
-        + enderecoPalete
-        + "\\n\\n"
-
-    texto+="TOTAL DE CAIXAS:\\n"
-
-    texto+="K0: "+totalK0+"\\n"
-    texto+="K1: "+totalK1+"\\n"
-    texto+="K2: "+totalK2+"\\n"
-    texto+="K3: "+totalK3+"\\n\\n"
-
-    texto+="STATUS: ENDEREÇADO"
-
-    document
-        .getElementById("resultado")
-        .textContent=texto
+    document.getElementById("resultado").textContent = texto
 }
-
 
 
 </script>
