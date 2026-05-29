@@ -31,10 +31,10 @@ def criar_palete_auto(db: Session, palete: schema.PaleteCriar):
     ).first()
 
     if not endereco:
-        raise HTTPException(
-            status_code=400,
-            detail="Nenhum endereço disponível"
-        )
+      raise HTTPException(
+        status_code=400,
+        detail="Nenhum endereço disponível"
+    )
 
     novo = models.Palete(
         codigo=palete.codigo,
