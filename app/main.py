@@ -935,7 +935,7 @@ function formatarVolume(num,total){
 
 async function adicionarAoPalete(){
 
-    cconst palete = document.getElementById("palete").value.trim()
+    const palete = document.getElementById("palete").value.trim()
     const endereco = document.getElementById("endereco").value.trim()  
     const pedido = document.getElementById("pedido").value.trim()
     const inicial = parseInt(document.getElementById("vol_inicial").value)
@@ -1003,6 +1003,8 @@ renderResumo()
     document.getElementById("vol_final").value=""
     document.getElementById("vol_total").value=""
     
+}
+
 function renderResumo(){
 
     const palete = resumo.length > 0 ? resumo[0].palete : ""
@@ -1036,7 +1038,8 @@ function renderResumo(){
     })
 
     let texto =
-        "PALETE: " + palete + "\\n\\n"
+    "PALETE: " + palete + "\n" +
+    "ENDEREÇO: " + endereco + "\n\n"
 
     texto += "PEDIDOS NO PALETE:\\n\\n"
 
