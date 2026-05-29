@@ -24,17 +24,27 @@ def criar_palete_auto(db: Session, palete: schema.PaleteCriar):
     if existente:
         return existente
 
-    endereco = db.query(models.Endereco).filter(
-        models.Endereco.capacidade_usada == 0
-    ).order_by(
+    enderecos = db.query(models.Endereco).order_by(
         models.Endereco.id
-    ).first()
+    ).all()
+
+    endereco = None
+
+    for e in enderecos:
+
+        palete_no_endereco = db.query(models.Palete).filter(
+            models.Palete.endereco_codigo == e.codigo
+        ).first()
+
+        if not palete_no_endereco:
+            endereco = e
+            break
 
     if not endereco:
-      raise HTTPException(
-        status_code=400,
-        detail="Nenhum endereço disponível"
-    )
+        raise HTTPException(
+            status_code=400,
+            detail="Nenhum endereço disponível"
+        )
 
     novo = models.Palete(
         codigo=palete.codigo,
