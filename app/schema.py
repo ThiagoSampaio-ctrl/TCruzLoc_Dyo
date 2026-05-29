@@ -75,6 +75,3 @@ class PaleteManualCriar(BaseModel):
     codigo_palete: str
     codigo_endereco: str
 
-class PaleteManualCriar(BaseModel):
-    codigo_palete: str
-    codigo_endereco: str

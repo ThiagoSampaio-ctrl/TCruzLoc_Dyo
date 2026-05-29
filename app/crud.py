@@ -47,16 +47,12 @@ def criar_palete_auto(db: Session, palete: schema.PaleteCriar):
         )
 
     novo = models.Palete(
-        codigo=palete.codigo,
-        qtd_k0=palete.qtd_k0,
-        qtd_k1=palete.qtd_k1,
-        qtd_k2=palete.qtd_k2,
-        qtd_k3=palete.qtd_k3,
-        volume_total=0,
-        endereco_codigo=endereco.codigo,
-        status="ENDERECADO"
-    )
-
+    codigo=palete.codigo,
+    volume_total=0,
+    endereco_codigo=endereco.codigo,
+    status="EM USO"
+)
+    
     endereco.capacidade_usada = 1
 
     db.add(novo)
@@ -291,3 +287,37 @@ def deletar_varios_pedidos_volume(
         "status":"ok",
         "removidos": removidos
     }
+
+def criar_ou_usar_palete_manual(db: Session, codigo_palete: str, codigo_endereco: str):
+
+    endereco = db.query(models.Endereco).filter(
+        models.Endereco.codigo == codigo_endereco
+    ).first()
+
+    if not endereco:
+        raise HTTPException(
+            status_code=404,
+            detail="Endereço não encontrado"
+        )
+
+    palete = db.query(models.Palete).filter(
+        models.Palete.codigo == codigo_palete
+    ).first()
+
+    if palete:
+        return palete
+
+    novo = models.Palete(
+    codigo=codigo_palete,
+    volume_total=0,
+    endereco_codigo=codigo_endereco,
+    status="EM USO"
+)
+
+    endereco.capacidade_usada = 1
+
+    db.add(novo)
+    db.commit()
+    db.refresh(novo)
+
+    return novo
