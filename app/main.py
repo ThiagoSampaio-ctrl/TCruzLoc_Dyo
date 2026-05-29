@@ -1040,12 +1040,12 @@ async function adicionarAoPalete(){
 }
 function renderResumo(){
 
-    const palete =
-        document.getElementById("palete").value.trim()
+     const palete = paleteAtual
 
-    let agrupado = {}
+     let agrupado = {}
 
-    resumo.forEach(item=>{
+     
+     resumo.forEach(item=>{
 
         if(!agrupado[item.pedido]){
 
