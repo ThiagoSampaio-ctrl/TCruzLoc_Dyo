@@ -499,7 +499,7 @@ async function cadastrarVolume(){
 
 @app.get("/conferente-v2", response_class=HTMLResponse)
 def tela_conferente_v2():
-    return """<!DOCTYPE html>
+   return r"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
