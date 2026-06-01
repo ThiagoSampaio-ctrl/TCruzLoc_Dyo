@@ -1,5 +1,5 @@
 from fastapi.responses import HTMLResponse
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import engine, Base, SessionLocal
@@ -9,6 +9,7 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="SmartLocator")
 
+
 def get_db():
     db = SessionLocal()
     try:
@@ -16,6 +17,10 @@ def get_db():
     finally:
         db.close()
 
+
+# ─────────────────────────────────────────────
+#  ROTAS BÁSICAS
+# ─────────────────────────────────────────────
 
 @app.get("/")
 def home():
@@ -32,6 +37,22 @@ def listar_caixas(db: Session = Depends(get_db)):
     return crud.listar_caixas(db)
 
 
+# ─────────────────────────────────────────────
+#  PALETES  — rotas estáticas ANTES das dinâmicas
+# ─────────────────────────────────────────────
+
+@app.post("/paletes/manual", response_model=schema.PaleteResposta)
+def criar_palete_manual(
+    dados: schema.PaleteManualCriar,
+    db: Session = Depends(get_db)
+):
+    return crud.criar_ou_usar_palete_manual(
+        db,
+        dados.codigo_palete,
+        dados.codigo_endereco
+    )
+
+
 @app.post("/paletes/auto", response_model=schema.PaleteResposta)
 def criar_palete_auto(palete: schema.PaleteCriar, db: Session = Depends(get_db)):
     return crud.criar_palete_auto(db, palete)
@@ -42,1079 +63,15 @@ def listar_paletes(db: Session = Depends(get_db)):
     return crud.listar_paletes(db)
 
 
-@app.post("/pedidos-volume", response_model=schema.PedidoVolumeResposta)
-def criar_pedido_volume(pedido: schema.PedidoVolumeCriar, db: Session = Depends(get_db)):
-    return crud.criar_pedido_volume(db, pedido)
-
-
-@app.get("/enderecos/{codigo_endereco}/detalhes")
-def detalhes_endereco(codigo_endereco: str, db: Session = Depends(get_db)):
-    return crud.detalhes_endereco(db, codigo_endereco)
-
-
-@app.get("/pedidos/{numero_pedido}")
-def buscar_pedido(numero_pedido: str, db: Session = Depends(get_db)):
-    return crud.buscar_pedido(db, numero_pedido)
-
+# ─────────────────────────────────────────────
+#  PEDIDOS-VOLUME — rotas estáticas ANTES das dinâmicas
+#  ORDEM IMPORTA no FastAPI: /duplicados e /deletar-varios
+#  devem vir ANTES de /{volume_id}
+# ─────────────────────────────────────────────
 
 @app.delete("/pedidos-volume/duplicados")
 def limpar_pedidos_duplicados(db: Session = Depends(get_db)):
     return crud.limpar_pedidos_duplicados(db)
-
-
-@app.get("/operacao", response_class=HTMLResponse)
-def tela_operacao():
-    return """
-
-    
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>TCruzLoc_Dyo</title>
-
-
-
-<style>
-
-#contador{
-    color:#00ff88;
-    font-size:18px;
-    font-weight:bold;
-    margin-top:18px;
-    margin-bottom:12px;
-}
-
-#historico{
-    margin-top:20px;
-    display:flex;
-    flex-wrap:wrap;
-    gap:10px;
-}
-
-.item-historico{
-    background:#222;
-    color:#00ff88;
-    border:1px solid #00ff88;
-    padding:10px 18px;
-    border-radius:8px;
-    cursor:pointer;
-    font-size:18px;
-}
-
-body{
-    font-family:Arial,sans-serif;
-    background:#111;
-    color:white;
-    margin:0;
-    padding:25px;
-}
-
-.box{
-    background:#1b1b1b;
-    max-width:950px;
-    margin:auto;
-    padding:35px;
-    border-radius:14px;
-    box-shadow:0 0 20px #000;
-}
-
-h1{
-    font-size:42px;
-    color:#00ff88;
-    margin-top:0;
-}
-
-h2{
-    font-size:28px;
-}
-
-input{
-    width:100%;
-    padding:22px;
-    font-size:34px;
-
-    background:#000;
-    color:#00ff88;
-
-    border:3px solid #00ff88;
-    border-radius:10px;
-
-    margin-bottom:20px;
-
-    caret-color:#00ff88;
-
-    box-sizing:border-box;
-}
-
-input::placeholder{
-    color:#777;
-}
-
-button{
-    width:49%;
-    padding:20px;
-    font-size:24px;
-
-    border:none;
-    border-radius:10px;
-
-    cursor:pointer;
-}
-
-button:hover{
-    transform:scale(1.02);
-    transition:.15s;
-}
-
-.btn-pedido{
-    background:#198754;
-}
-
-pre{
-    background:#000;
-    color:#00ff88;
-
-    padding:30px;
-    font-size:30px;
-
-    white-space:pre-wrap;
-
-    margin-top:25px;
-
-    border-radius:12px;
-
-    min-height:300px;
-
-    border:2px solid #00ff88;
-}
-.sucesso{
-    border:2px solid #00ff88 !important;
-    box-shadow:0 0 18px #00ff88;
-}
-
-.erro{
-    border:2px solid #ff3333 !important;
-    box-shadow:0 0 18px #ff3333;
-}
-
-#relogio{
-    color:#00ff88;
-    font-size:18px;
-    font-weight:bold;
-    margin-bottom:15px;
-}
-#dashboard{
-
-    display:flex;
-    flex-wrap:wrap;
-
-    gap:18px;
-
-    margin-top:15px;
-    margin-bottom:18px;
-
-    color:#00ff88;
-
-    font-weight:bold;
-    font-size:18px;
-}
-
-#contadorErros{
-    color:#ff4444;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="box">
-
-<h1>TCruzLoc_Dyo</h1>
-
-<div id="relogio"></div>
-
-<h2>Bipar / Digitar endereço ou pedido</h2>
-
-<input
-id="codigo"
-placeholder="Ex: R07 014 1 ou 349596"
-autofocus
-onkeypress="if(event.key==='Enter'){buscarAutomatico()}"
->
-
-<button onclick="buscarEndereco()">Buscar Endereço</button>
-<button class="btn-pedido" onclick="buscarPedido()">Buscar Pedido</button>
-
-<pre id="resultado">Aguardando leitura...</pre> 
-
-<div id="dashboard">
-
-    <span id="contador">
-        Consultas: 0
-    </span>
-
-    <span id="contadorPedidos">
-        Pedidos: 0
-    </span>
-
-    <span id="contadorEnderecos">
-        Endereços: 0
-    </span>
-
-    <span id="contadorErros">
-        Erros: 0
-    </span>
-
-</div>
-
-<h3>Últimas consultas</h3>
-<div id="historico"></div>
-
-</div>
-
-<script>
-
-window.onload=function(){
-    document.getElementById("codigo").focus()
-}
-function atualizarRelogio(){
-
-    const agora = new Date()
-
-    const dataHora =
-        agora.toLocaleDateString("pt-BR") +
-        " " +
-        agora.toLocaleTimeString("pt-BR")
-
-    document.getElementById("relogio").textContent = dataHora
-}
-
-setInterval(atualizarRelogio, 1000)
-atualizarRelogio()
-
-let tempoBusca = null
-let historico = []
-let contadorConsultas = 0
-let contadorPedidos = 0
-let contadorEnderecos = 0
-let contadorErros = 0
-
-document.addEventListener("DOMContentLoaded", function(){
-
-    const campo = document.getElementById("codigo")
-
-    campo.addEventListener("input", function(){
-
-        clearTimeout(tempoBusca)
-
-        tempoBusca = setTimeout(function(){
-
-            const valor = campo.value.trim()
-
-            if(!valor.trim().toUpperCase().startsWith("R") && valor.length >= 5) {
-    buscarAutomatico()
-}
-
-        }, 500)
-    })
-    })
-function efeitoSucesso(){
-
-    const campo = document.getElementById("codigo")
-
-    campo.classList.remove("erro")
-
-    campo.classList.add("sucesso")
-
-    setTimeout(()=>{
-        campo.classList.remove("sucesso")
-    },800)
-}
-
-function efeitoErro(){
-
-    const campo = document.getElementById("codigo")
-
-    campo.classList.remove("sucesso")
-
-    campo.classList.add("erro")
-
-    setTimeout(()=>{
-        campo.classList.remove("erro")
-    },800)
-}
-
-function beepSucesso(){
-
-    const audio =
-        new Audio(
-        "https://actions.google.com/sounds/v1/alarms/beep_short.ogg"    
-        )
-
-    audio.play()
-
-}
-
-function beepErro(){
-
-    const audio =
-        new Audio(
-        "https://actions.google.com/sounds/v1/cartoon/pop.ogg"          
-        )
-
-    audio.play()
-
-}
-
-function atualizarDashboard(){
-
-    document.getElementById("contador").textContent =
-        "Consultas: " + contadorConsultas
-
-    document.getElementById("contadorPedidos").textContent =
-        "Pedidos: " + contadorPedidos
-
-    document.getElementById("contadorEnderecos").textContent =
-        "Endereços: " + contadorEnderecos
-
-    document.getElementById("contadorErros").textContent =
-        "Erros: " + contadorErros
-}
-
-function salvarHistorico(valor){
-
-    if(!valor) return
-
-    historico.unshift(valor)
-
-    historico = [...new Set(historico)]
-
-    historico = historico.slice(0,10)
-
-    renderHistorico()
-
-    contadorConsultas++
-
-    atualizarDashboard()
-}
-
-function renderHistorico(){
-
-    const area = document.getElementById("historico")
-
-    area.innerHTML = ""
-
-    historico.forEach(item=>{
-
-        area.innerHTML +=
-        `<div class="item-historico" onclick="rebuscar('${item}')">
-            ${item}
-        </div>`
-    })
-}
-
-function rebuscar(valor){
-
-    document.getElementById("codigo").value = valor
-
-    buscarAutomatico()
-}
-
-function iniciarLoading(){
-
-    document.getElementById("resultado").textContent =
-        "⏳ Buscando..."
-
-    document.querySelectorAll("button").forEach(botao=>{
-        botao.disabled = true
-    })
-}
-
-function finalizarLoading(){
-
-    document.querySelectorAll("button").forEach(botao=>{
-        botao.disabled = false
-    })
-
-    document.getElementById("codigo").focus()
-}
-
-function limparCampo(){
-    document.getElementById("codigo").value=""
-    document.getElementById("codigo").focus()
-}
-function buscarAutomatico(){
-
-    let codigo =
-        document.getElementById("codigo")
-        .value
-        .trim()
-
-    codigo =
-        codigo.toUpperCase()
-
-    // endereço bipado sem espaços
-if(/^R\\d+$/.test(codigo)){
-
-        if(codigo.length === 7){
-
-            codigo =
-                codigo.substring(0,3) + " " +
-                codigo.substring(3,6) + " " +
-                codigo.substring(6)
-
-            document.getElementById("codigo")
-                .value = codigo
-        }
-    }
-
-    if(codigo.startsWith("R")){
-
-        buscarEndereco()
-
-    }else{
-
-        buscarPedido()
-
-    }
-}
-async function buscarEndereco(){
-
-    const codigo = document.getElementById("codigo").value.trim()
-    const resultado = document.getElementById("resultado")
-    iniciarLoading()
-    
-    if(!codigo){
-        resultado.textContent = "Digite ou bipe um endereço."
-        finalizarLoading()
-        return
-    }
-
-    try{
-        const resposta = await fetch(
-            "/enderecos/" + encodeURIComponent(codigo) + "/detalhes"
-        )
-
-        const dados = await resposta.json()
-
-        if(!dados.paletes || dados.paletes.length === 0){
-            resultado.textContent = "Endereço não encontrado ou sem palete."
-            efeitoErro()
-            beepErro()
-            limparCampo()
-            contadorErros++
-            atualizarDashboard()
-            finalizarLoading()
-            return
-        }
-
-        let texto = ""
-
-        texto += "ENDEREÇO: " + dados.endereco + "\\n\\n"
-
-        dados.paletes.forEach(palete=>{
-
-            texto += "PALETE: " + palete.palete + "\\n\\n"
-            texto += "PEDIDOS:\\n\\n"
-
-            palete.pedidos.forEach(pedido=>{
-
-                texto += pedido.pedido + "\\n"
-
-                pedido.volumes.forEach(volume=>{
-                    texto += volume + "\\n"
-                })
-
-                texto += "\\n"
-            })
-        })
-
-        resultado.textContent = texto
-        efeitoSucesso()
-        beepSucesso()
-        salvarHistorico(codigo)
-        contadorEnderecos++
-        atualizarDashboard()
-    }
-    catch{
-        resultado.textContent = "Erro ao buscar endereço."
-        efeitoErro()
-        beepErro()
-        contadorErros++
-        atualizarDashboard()
-    }
-    finalizarLoading()
-    limparCampo()
-}
-
-
-async function buscarPedido(){
-
-    const codigo = document.getElementById("codigo").value.trim()
-    const resultado = document.getElementById("resultado")
-    iniciarLoading()
-
-    if(!codigo){
-        resultado.textContent = "Digite ou bipe um pedido."
-        finalizarLoading()
-        return
-    }
-
-    try{
-        const resposta = await fetch(
-            "/pedidos/" + encodeURIComponent(codigo)
-        )
-
-        const dados = await resposta.json()
-
-        if(dados.detail){
-            resultado.textContent = dados.detail
-            efeitoErro()
-            beepErro()
-            limparCampo()
-            contadorErros++
-            atualizarDashboard()
-            finalizarLoading()
-            return
-        }
-
-        let texto = ""
-
-        texto += "PEDIDO: " + dados.pedido + "\\n\\n"
-
-        dados.enderecos.forEach(item=>{
-
-            texto += "ENDEREÇO: " + item.endereco + "\\n"
-            texto += "PALETE: " + item.palete + "\\n\\n"
-            texto += "VOLUMES:\\n"
-
-            item.volumes.forEach(volume=>{
-                texto += volume + "\\n"
-            })
-
-            texto += "\\n"
-        })
-
-        resultado.textContent = texto
-        salvarHistorico(codigo)
-        efeitoSucesso()
-        beepSucesso()
-        contadorPedidos++
-        atualizarDashboard()
-    }
-    catch{
-        resultado.textContent = "Erro ao buscar pedido."
-        efeitoErro()
-        beepErro()
-        contadorErros++
-        atualizarDashboard()
-    }
-    finalizarLoading()
-    limparCampo()
-}
-
-</script>
-
-</body>
-</html>
-"""
-
-
-
-@app.get("/conferente", response_class=HTMLResponse)
-def tela_conferente():
-    return """
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>TCruzLoc_Dyo - Conferente</title>
-
-<style>
-body{
-    font-family:Arial,sans-serif;
-    background:#111;
-    color:white;
-    margin:0;
-    padding:25px;
-}
-
-.box{
-    background:#1b1b1b;
-    max-width:750px;
-    margin:auto;
-    padding:35px;
-    border-radius:14px;
-    box-shadow:0 0 20px #000;
-}
-
-h1{
-    color:#00ff88;
-    font-size:40px;
-    margin-top:0;
-}
-
-h2{
-    font-size:26px;
-}
-
-label{
-    display:block;
-    margin-top:15px;
-    margin-bottom:6px;
-    font-size:18px;
-    color:#00ff88;
-}
-
-input{
-    width:100%;
-    padding:18px;
-    font-size:26px;
-    background:#000;
-    color:#00ff88;
-    border:3px solid #00ff88;
-    border-radius:10px;
-    box-sizing:border-box;
-}
-
-button{
-    width:100%;
-    margin-top:25px;
-    padding:20px;
-    font-size:24px;
-    background:#198754;
-    color:white;
-    border:none;
-    border-radius:10px;
-    cursor:pointer;
-}
-
-pre{
-    background:#000;
-    color:#00ff88;
-    padding:25px;
-    font-size:22px;
-    white-space:pre-wrap;
-    margin-top:25px;
-    border-radius:12px;
-    border:2px solid #00ff88;
-}
-
-.sucesso{
-    border-color:#00ff88 !important;
-    box-shadow:0 0 18px #00ff88;
-}
-
-.erro{
-    border-color:#ff3333 !important;
-    box-shadow:0 0 18px #ff3333;
-}
-</style>
-</head>
-
-<body>
-
-<div class="box">
-
-<h1>TCruzLoc_Dyo</h1>
-<h2>Tela do Conferente</h2>
-
-<label>Pedido</label>
-<input id="pedido" placeholder="Ex: 349596" autofocus>
-
-<label>Quantidade de volumes</label>
-<input id="volume_total" placeholder="Ex: 3"> 
-
-<label>Palete</label>
-<input id="palete" placeholder="Ex: PAL001">
-
-<button onclick="cadastrarVolume()">Cadastrar volume</button>
-
-<pre id="resultado">Aguardando cadastro...</pre>
-
-</div>
-
-<script>
-
-function efeitoSucesso(){
-    const box = document.querySelector(".box")
-    box.classList.remove("erro")
-    box.classList.add("sucesso")
-
-    setTimeout(()=>{
-        box.classList.remove("sucesso")
-    },800)
-}
-
-function efeitoErro(){
-    const box = document.querySelector(".box")
-    box.classList.remove("sucesso")
-    box.classList.add("erro")
-
-    setTimeout(()=>{
-        box.classList.remove("erro")
-    },800)
-}
-
-async function cadastrarVolume(){
-
-    const pedido =
-        document.getElementById("pedido").value.trim()
-
-    const volumeTotal =
-        parseInt(
-            document.getElementById("volume_total").value.trim()
-        )
-
-    const palete = paleteAtual
-
-    const resultado =
-        document.getElementById("resultado")
-
-    if(!pedido || !volumeTotal || !palete){
-
-        resultado.textContent =
-            "Preencha todos os campos."
-
-        efeitoErro()
-
-        return
-    }
-
-    resultado.textContent =
-        "⏳ Cadastrando volumes..."
-
-    try{
-
-        let cadastrados = ""
-
-        for(let i=1;i<=volumeTotal;i++){
-
-            const resposta =
-                await fetch("/pedidos-volume",{
-
-                    method:"POST",
-
-                    headers:{
-                        "Content-Type":"application/json"
-                    },
-
-                    body:JSON.stringify({
-
-                        numero_pedido: pedido,
-
-                        volume_atual: i,
-
-                        volume_total: volumeTotal,
-
-                        palete_codigo: palete
-                    })
-
-                })
-
-            const dados =
-                await resposta.json()
-
-            if(dados.detail){
-
-                resultado.textContent =
-                    dados.detail
-
-                efeitoErro()
-
-                return
-            }
-
-            cadastrados +=
-                pedido +
-                " " +
-                String(i).padStart(3,"0") +
-                "/" +
-                String(volumeTotal).padStart(3,"0") +
-                "\\n"
-        }
-
-        resultado.textContent =
-
-            "VOLUMES CADASTRADOS COM SUCESSO!\\n\\n" +
-
-            cadastrados +
-
-            "\\nPalete: " +
-            palete
-
-        efeitoSucesso()
-
-        document.getElementById("pedido").value=""
-
-        document.getElementById("volume_total").value=""
-
-        document.getElementById("pedido").focus()
-
-    }
-
-    catch{
-
-        resultado.textContent =
-            "Erro ao cadastrar."
-
-        efeitoErro()
-    }
-}
-
-</script>
-
-</body>
-</html>
-"""
-@app.get("/conferente-v2", response_class=HTMLResponse)
-def tela_conferente_v2():
-    return """
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<title>TCruzLoc_Dyo - Montagem Palete</title>
-
-<style>
-
-body{font-family:Arial,sans-serif;background:#111;color:white;margin:0;padding:25px;}
-.box{background:#1b1b1b;max-width:950px;margin:auto;padding:35px;border-radius:14px;box-shadow:0 0 20px #000;}
-h1{color:#00ff88;font-size:42px;margin-top:0;}
-label{color:#00ff88;font-weight:bold;display:block;margin-top:15px;}
-input{width:100%;padding:16px;font-size:24px;background:#000;color:#00ff88;border:3px solid #00ff88;border-radius:10px;box-sizing:border-box;margin-top:6px;}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
-button{width:100%;margin-top:25px;padding:20px;font-size:24px;background:#198754;color:white;border:none;border-radius:10px;cursor:pointer;}
-pre{background:#000;color:#00ff88;padding:25px;font-size:22px;white-space:pre-wrap;margin-top:25px;border-radius:12px;border:2px solid #00ff88;}
-
-</style>
-</head>
-<body>
-<div class="box">
-
-<h1>TCruzLoc_Dyo</h1>
-<h2>Montagem Inteligente de Palete</h2>
-
-<label>Palete</label>
-<input id="palete" placeholder="Ex: PAL001" autofocus>
-
-<label>Endereço</label>
-<input id="endereco" placeholder="Ex: R07 014 1">
-
-<hr>
-
-<label>Pedido</label>
-<input id="pedido" placeholder="Ex: 349596">
-
-<div class="grid">
-<div><label>Vol. inicial</label><input id="vol_inicial" placeholder="1"></div>
-<div><label>Vol. final</label><input id="vol_final" placeholder="6"></div>
-<div><label>Total pedido</label><input id="vol_total" placeholder="10"></div>
-</div>
-
-
-<button onclick="adicionarAoPalete()">Adicionar ao Palete</button>
-
-<button onclick="finalizarPalete()" style= "background:#0d6efd;">
-    Finalizar Palete
-</button>
-
-<pre id="resultado">Pedidos no palete aparecerão aqui...</pre>
-
-</div>
-
-<script>
-let resumo = []
-
-function formatarVolume(num,total){
-    return String(num).padStart(3,"0") + "/" + String(total).padStart(3,"0")
-}
-
-async function adicionarAoPalete(){
-
-    const palete = document.getElementById("palete").value.trim()
-    const endereco = document.getElementById("endereco").value.trim()  
-    const pedido = document.getElementById("pedido").value.trim()
-    const inicial = parseInt(document.getElementById("vol_inicial").value)
-    const final = parseInt(document.getElementById("vol_final").value)
-    const total = parseInt(document.getElementById("vol_total").value)
-
-
-    const resultado = document.getElementById("resultado")
-
-    if(!palete || !endereco || !pedido || !inicial || !final || !total){
-        resultado.textContent = "Preencha palete, pedido e volumes."
-        return
-    }
-
-    if(final < inicial){
-        resultado.textContent = "Volume final não pode ser menor que o inicial."
-        return
-    }
-
-    resultado.textContent = "⏳ Criando/verificando palete..."
-
-    const criarPalete = await fetch("/paletes/manual", {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-        codigo_palete: palete,
-        codigo_endereco: endereco
-    })
-})
-const paleteResp = await criarPalete.json()
-
-if(paleteResp.detail){
-    resultado.textContent = paleteResp.detail
-    return
-}
-
-    resultado.textContent = "⏳ Cadastrando volumes..."
-
-    for(let i = inicial; i <= final; i++){
-        const resposta = await fetch("/pedidos-volume", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({
-                numero_pedido: pedido,
-                volume_atual: i,
-                volume_total: total,
-                palete_codigo: palete
-            })
-        })
-
-        const dados = await resposta.json()
-
-        if(dados.detail){
-            resultado.textContent = dados.detail
-            return
-        }
-    }
-
-resumo.push({palete, endereco, pedido, inicial, final, total})
-
-renderResumo()
-
-    document.getElementById("pedido").value=""
-    document.getElementById("vol_inicial").value=""
-    document.getElementById("vol_final").value=""
-    document.getElementById("vol_total").value=""
-    
-}
-
-function renderResumo(){
-
-    const palete = resumo.length > 0 ? resumo[0].palete : ""
-    const endereco = resumo.length > 0 ? resumo[0].endereco : ""
-
-    let agrupado = {}
-
-    let texto =
-        "PALETE: " + palete + "\n" +
-        "ENDEREÇO: " + endereco + "\n\n"
-
-     
-     resumo.forEach(item=>{
-
-        if(!agrupado[item.pedido]){
-
-            agrupado[item.pedido]={
-                inicial:item.inicial,
-                final:item.final,
-                total:item.total,
-            }
-
-        }else{
-
-            agrupado[item.pedido].final =
-                Math.max(
-                    agrupado[item.pedido].final,
-                    item.final
-                )
-        }
-    })
-
-    let texto =
-    "PALETE: " + palete + "\n" +
-    "ENDEREÇO: " + endereco + "\n\n"
-
-    texto += "PEDIDOS NO PALETE:\\n\\n"
-
-    for(const pedido in agrupado){
-
-        let item = agrupado[pedido]
-
-        texto += pedido + "\\n"
-
-        texto +=
-            formatarVolume(
-                item.inicial,
-                item.total
-            )
-
-        texto += " até "
-
-        texto +=
-            formatarVolume(
-                item.final,
-                item.total
-            ) + "\\n"
-        texto += "\n"
-    }
-
-    document
-        .getElementById("resultado")
-        .textContent = texto
-}
-function finalizarPalete(){
-
-    const palete = document.getElementById("palete").value.trim()
-    const endereco = document.getElementById("endereco").value.trim()
-
-    if(!palete){
-        document.getElementById("resultado").textContent = "Informe o palete."
-        return
-    }
-
-    if(resumo.length===0){
-        document.getElementById("resultado").textContent = "Nenhum pedido adicionado."
-        return
-    }
-
-    let texto = ""
-
-    texto += "PALETE FINALIZADO\n\n"
-    texto += "PALETE: " + palete + "\n"
-    texto += "ENDEREÇO: " + endereco + "\n\n"
-    texto += "STATUS: EM USO"
-
-    document.getElementById("resultado").textContent = texto
-}
-
-
-</script>
-</body>
-</html>
-"""
-@app.get("/pedidos-volume")
-def listar_pedidos_volume(
-    db: Session = Depends(get_db)
-):
-    return crud.listar_pedidos_volume(db)
-
-
-@app.delete("/pedidos-volume/{volume_id}")
-def deletar_pedido_volume(
-    volume_id: int,
-    db: Session = Depends(get_db)
-):
-    return crud.deletar_pedido_volume(
-        db,
-        volume_id
-    )
 
 
 @app.post("/pedidos-volume/deletar-varios")
@@ -1122,150 +79,839 @@ def deletar_varios_pedidos_volume(
     dados: schema.DeletarVolumes,
     db: Session = Depends(get_db)
 ):
-    return crud.deletar_varios_pedidos_volume(
-        db,
-        dados.ids
-    )
+    return crud.deletar_varios_pedidos_volume(db, dados.ids)
 
 
-@app.get("/gerenciar-volumes", response_class=HTMLResponse)
-def gerenciar_volumes():
-    return """
+@app.get("/pedidos-volume")
+def listar_pedidos_volume(db: Session = Depends(get_db)):
+    return crud.listar_pedidos_volume(db)
 
-<!DOCTYPE html>
+
+@app.post("/pedidos-volume", response_model=schema.PedidoVolumeResposta)
+def criar_pedido_volume(pedido: schema.PedidoVolumeCriar, db: Session = Depends(get_db)):
+    return crud.criar_pedido_volume(db, pedido)
+
+
+@app.delete("/pedidos-volume/{volume_id}")
+def deletar_pedido_volume(volume_id: int, db: Session = Depends(get_db)):
+    return crud.deletar_pedido_volume(db, volume_id)
+
+
+# ─────────────────────────────────────────────
+#  ENDEREÇOS — rotas estáticas ANTES das dinâmicas
+# ─────────────────────────────────────────────
+
+@app.get("/enderecos/{codigo_endereco}/detalhes")
+def detalhes_endereco(codigo_endereco: str, db: Session = Depends(get_db)):
+    return crud.detalhes_endereco(db, codigo_endereco)
+
+
+# ─────────────────────────────────────────────
+#  PEDIDOS
+# ─────────────────────────────────────────────
+
+@app.get("/pedidos/{numero_pedido}")
+def buscar_pedido(numero_pedido: str, db: Session = Depends(get_db)):
+    return crud.buscar_pedido(db, numero_pedido)
+
+
+# ─────────────────────────────────────────────
+#  TELA DE OPERAÇÃO  (consulta por endereço ou pedido)
+# ─────────────────────────────────────────────
+
+@app.get("/operacao", response_class=HTMLResponse)
+def tela_operacao():
+    return """<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Gerenciar Volumes</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCruzLoc_Dyo – Operação</title>
 <style>
-body{font-family:Arial;background:#111;color:white;padding:25px;}
-.box{background:#1b1b1b;max-width:1100px;margin:auto;padding:30px;border-radius:14px;}
-h1{color:#00ff88;}
-button{padding:12px 18px;margin:8px;background:#198754;color:white;border:none;border-radius:8px;cursor:pointer;}
-button.danger{background:#dc3545;}
-table{width:100%;border-collapse:collapse;margin-top:20px;}
-th,td{border:1px solid #00ff88;padding:10px;text-align:left;}
-th{color:#00ff88;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#111;color:white;padding:20px;}
+.box{background:#1b1b1b;max-width:950px;margin:auto;padding:30px;border-radius:14px;box-shadow:0 0 20px #000;}
+h1{font-size:38px;color:#00ff88;margin-bottom:4px;}
+#relogio{color:#00ff88;font-size:16px;font-weight:bold;margin-bottom:18px;}
+h2{font-size:22px;margin-bottom:12px;}
+input{
+    width:100%;padding:20px;font-size:32px;
+    background:#000;color:#00ff88;
+    border:3px solid #00ff88;border-radius:10px;
+    margin-bottom:16px;caret-color:#00ff88;
+}
+input::placeholder{color:#555;}
+input.sucesso{border-color:#00ff88!important;box-shadow:0 0 16px #00ff88;}
+input.erro{border-color:#ff3333!important;box-shadow:0 0 16px #ff3333;}
+.btns{display:flex;gap:12px;margin-bottom:0;}
+button{
+    flex:1;padding:18px;font-size:22px;
+    border:none;border-radius:10px;cursor:pointer;
+    background:#333;color:white;transition:transform .12s;
+}
+button:hover{transform:scale(1.02);}
+button:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.btn-endereco{background:#0d6efd;}
+.btn-pedido{background:#198754;}
+pre{
+    background:#000;color:#00ff88;
+    padding:26px;font-size:26px;
+    white-space:pre-wrap;margin-top:20px;
+    border-radius:12px;min-height:260px;
+    border:2px solid #333;
+}
+#dashboard{display:flex;flex-wrap:wrap;gap:14px;margin-top:16px;font-weight:bold;font-size:16px;}
+#dashboard span{color:#00ff88;}
+#contadorErros{color:#ff4444!important;}
+#historico{margin-top:18px;display:flex;flex-wrap:wrap;gap:8px;}
+.item-hist{
+    background:#222;color:#00ff88;
+    border:1px solid #00ff88;
+    padding:8px 16px;border-radius:8px;
+    cursor:pointer;font-size:16px;
+}
+.item-hist:hover{background:#00ff8820;}
+h3{margin-top:20px;margin-bottom:8px;font-size:18px;color:#aaa;}
 </style>
 </head>
 <body>
 <div class="box">
-<h1>Gerenciar Volumes</h1>
+  <h1>TCruzLoc_Dyo</h1>
+  <div id="relogio"></div>
 
-<button onclick="carregar()">Atualizar</button>
-<button onclick="selecionarTodos()">Selecionar todos</button>
-<button class="danger" onclick="apagarSelecionados()">Apagar selecionados</button>
+  <h2>Bipar / Digitar endereço ou pedido</h2>
+  <input id="codigo" placeholder="Ex: R07 014 1 ou 349596" autofocus
+         onkeypress="if(event.key==='Enter') buscarAutomatico()">
 
-<table>
-<thead>
-<tr>
-<th></th><th>ID</th><th>Pedido</th><th>Volume</th><th>Palete</th><th>Endereço</th><th>Ação</th>
-</tr>
-</thead>
-<tbody id="tabela"></tbody>
-</table>
+  <div class="btns">
+    <button class="btn-endereco" onclick="buscarEndereco()">🔍 Buscar Endereço</button>
+    <button class="btn-pedido"   onclick="buscarPedido()">📦 Buscar Pedido</button>
+  </div>
+
+  <pre id="resultado">Aguardando leitura...</pre>
+
+  <div id="dashboard">
+    <span id="cConsultas">Consultas: 0</span>
+    <span id="cPedidos">Pedidos: 0</span>
+    <span id="cEnderecos">Endereços: 0</span>
+    <span id="contadorErros">Erros: 0</span>
+  </div>
+
+  <h3>Últimas consultas</h3>
+  <div id="historico"></div>
 </div>
 
 <script>
+// ── relógio ──
+function tick(){
+    const d = new Date()
+    document.getElementById("relogio").textContent =
+        d.toLocaleDateString("pt-BR") + "  " + d.toLocaleTimeString("pt-BR")
+}
+setInterval(tick, 1000); tick()
+
+// ── estado ──
+let historico = [], nConsultas=0, nPedidos=0, nEnderecos=0, nErros=0
+let timerAuto = null
+
+// ── auto-busca ao digitar ──
+document.getElementById("codigo").addEventListener("input", function(){
+    clearTimeout(timerAuto)
+    const v = this.value.trim()
+    // só dispara auto se não começar com R (endereço) e tiver >= 5 chars
+    if(!v.toUpperCase().startsWith("R") && v.length >= 5){
+        timerAuto = setTimeout(buscarAutomatico, 600)
+    }
+})
+
+function buscarAutomatico(){
+    let codigo = document.getElementById("codigo").value.trim().toUpperCase()
+
+    // formatar endereço bipado sem espaços: R070141 -> R07 014 1
+    if(/^R\d{6,}$/.test(codigo) && codigo.length === 7){
+        codigo = codigo.substring(0,3)+" "+codigo.substring(3,6)+" "+codigo.substring(6)
+        document.getElementById("codigo").value = codigo
+    }
+
+    if(codigo.startsWith("R")) buscarEndereco()
+    else buscarPedido()
+}
+
+// ── feedback visual ──
+function flash(cls){
+    const el = document.getElementById("codigo")
+    el.classList.add(cls)
+    setTimeout(()=>el.classList.remove(cls), 800)
+}
+
+// ── sons ──
+function beep(url){ try{ new Audio(url).play() }catch(e){} }
+const SOM_OK  = "https://actions.google.com/sounds/v1/alarms/beep_short.ogg"
+const SOM_ERR = "https://actions.google.com/sounds/v1/cartoon/pop.ogg"
+
+// ── loading ──
+function loading(sim){
+    document.querySelectorAll("button").forEach(b => b.disabled = sim)
+    if(sim) document.getElementById("resultado").textContent = "⏳ Buscando..."
+}
+
+function limpar(){ document.getElementById("codigo").value=""; document.getElementById("codigo").focus() }
+
+// ── dashboard ──
+function dash(){
+    document.getElementById("cConsultas").textContent  = "Consultas: "+nConsultas
+    document.getElementById("cPedidos").textContent    = "Pedidos: "+nPedidos
+    document.getElementById("cEnderecos").textContent  = "Endereços: "+nEnderecos
+    document.getElementById("contadorErros").textContent = "Erros: "+nErros
+}
+
+function addHist(v){
+    if(!v) return
+    historico = [...new Set([v,...historico])].slice(0,10)
+    document.getElementById("historico").innerHTML =
+        historico.map(h=>`<div class="item-hist" onclick="rebuscar('${h}')">${h}</div>`).join("")
+    nConsultas++; dash()
+}
+
+function rebuscar(v){ document.getElementById("codigo").value=v; buscarAutomatico() }
+
+// ── buscar endereço ──
+async function buscarEndereco(){
+    const codigo = document.getElementById("codigo").value.trim()
+    if(!codigo) return
+    loading(true)
+    try{
+        const r = await fetch("/enderecos/"+encodeURIComponent(codigo)+"/detalhes")
+        const d = await r.json()
+
+        if(!d.paletes || d.paletes.length===0){
+            document.getElementById("resultado").textContent = "❌ Endereço não encontrado ou sem palete."
+            flash("erro"); beep(SOM_ERR); nErros++; dash(); limpar()
+            loading(false); return
+        }
+
+        let txt = "ENDEREÇO: "+d.endereco+"\n\n"
+        d.paletes.forEach(p=>{
+            txt += "PALETE: "+p.palete+"\n\nPEDIDOS:\n\n"
+            p.pedidos.forEach(ped=>{
+                txt += ped.pedido+"\n"
+                ped.volumes.forEach(v=> txt += "  "+v+"\n")
+                txt += "\n"
+            })
+        })
+
+        document.getElementById("resultado").textContent = txt
+        flash("sucesso"); beep(SOM_OK); addHist(codigo); nEnderecos++; dash()
+    }catch(e){
+        document.getElementById("resultado").textContent = "❌ Erro ao buscar endereço."
+        flash("erro"); beep(SOM_ERR); nErros++; dash()
+    }
+    loading(false); limpar()
+}
+
+// ── buscar pedido ──
+async function buscarPedido(){
+    const codigo = document.getElementById("codigo").value.trim()
+    if(!codigo) return
+    loading(true)
+    try{
+        const r = await fetch("/pedidos/"+encodeURIComponent(codigo))
+        const d = await r.json()
+
+        if(d.detail){
+            document.getElementById("resultado").textContent = "❌ "+d.detail
+            flash("erro"); beep(SOM_ERR); nErros++; dash(); limpar()
+            loading(false); return
+        }
+
+        let txt = "PEDIDO: "+d.pedido+"\n\n"
+        d.enderecos.forEach(item=>{
+            txt += "ENDEREÇO: "+item.endereco+"\n"
+            txt += "PALETE:   "+item.palete+"\n\n"
+            txt += "VOLUMES:\n"
+            item.volumes.forEach(v=> txt += "  "+v+"\n")
+            txt += "\n"
+        })
+
+        document.getElementById("resultado").textContent = txt
+        flash("sucesso"); beep(SOM_OK); addHist(codigo); nPedidos++; dash()
+    }catch(e){
+        document.getElementById("resultado").textContent = "❌ Erro ao buscar pedido."
+        flash("erro"); beep(SOM_ERR); nErros++; dash()
+    }
+    loading(false); limpar()
+}
+</script>
+</body>
+</html>"""
+
+
+# ─────────────────────────────────────────────
+#  TELA CONFERENTE v1  (cadastro simples)
+# ─────────────────────────────────────────────
+
+@app.get("/conferente", response_class=HTMLResponse)
+def tela_conferente():
+    return """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCruzLoc_Dyo – Conferente</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#111;color:white;padding:20px;}
+.box{
+    background:#1b1b1b;max-width:750px;margin:auto;
+    padding:30px;border-radius:14px;box-shadow:0 0 20px #000;
+    transition:box-shadow .3s,border .3s;border:2px solid transparent;
+}
+.box.sucesso{border-color:#00ff88;box-shadow:0 0 24px #00ff88;}
+.box.erro{border-color:#ff3333;box-shadow:0 0 24px #ff3333;}
+h1{color:#00ff88;font-size:36px;margin-bottom:4px;}
+h2{font-size:22px;margin-bottom:20px;color:#aaa;}
+label{display:block;margin-top:14px;margin-bottom:6px;font-size:16px;color:#00ff88;}
+input{
+    width:100%;padding:16px;font-size:24px;
+    background:#000;color:#00ff88;
+    border:2px solid #00ff88;border-radius:10px;
+}
+input::placeholder{color:#555;}
+button{
+    width:100%;margin-top:22px;padding:18px;font-size:22px;
+    background:#198754;color:white;border:none;border-radius:10px;cursor:pointer;
+    transition:transform .12s;
+}
+button:hover{transform:scale(1.01);}
+button:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+pre{
+    background:#000;color:#00ff88;padding:22px;font-size:20px;
+    white-space:pre-wrap;margin-top:20px;border-radius:12px;
+    border:2px solid #333;min-height:120px;
+}
+</style>
+</head>
+<body>
+<div class="box" id="box">
+  <h1>TCruzLoc_Dyo</h1>
+  <h2>Conferente — Cadastro de Volumes</h2>
+
+  <label>Pedido</label>
+  <input id="pedido" placeholder="Ex: 349596" autofocus>
+
+  <label>Quantidade de volumes</label>
+  <input id="volume_total" type="number" min="1" placeholder="Ex: 3">
+
+  <label>Palete</label>
+  <input id="palete" placeholder="Ex: PAL001">
+
+  <button id="btnCadastrar" onclick="cadastrarVolume()">Cadastrar Volumes</button>
+
+  <pre id="resultado">Aguardando cadastro...</pre>
+</div>
+
+<script>
+// permitir Enter nos campos para avançar / cadastrar
+document.getElementById("pedido").addEventListener("keypress", e=>{
+    if(e.key==="Enter") document.getElementById("volume_total").focus()
+})
+document.getElementById("volume_total").addEventListener("keypress", e=>{
+    if(e.key==="Enter") document.getElementById("palete").focus()
+})
+document.getElementById("palete").addEventListener("keypress", e=>{
+    if(e.key==="Enter") cadastrarVolume()
+})
+
+function flash(cls){
+    const box = document.getElementById("box")
+    box.classList.add(cls)
+    setTimeout(()=>box.classList.remove(cls), 900)
+}
+
+async function cadastrarVolume(){
+    const pedido      = document.getElementById("pedido").value.trim()
+    const volumeTotal = parseInt(document.getElementById("volume_total").value.trim())
+    const palete      = document.getElementById("palete").value.trim()   // ← CORRIGIDO: ler do input
+    const resultado   = document.getElementById("resultado")
+    const btn         = document.getElementById("btnCadastrar")
+
+    if(!pedido || !volumeTotal || volumeTotal < 1 || !palete){
+        resultado.textContent = "⚠️ Preencha todos os campos corretamente."
+        flash("erro"); return
+    }
+
+    btn.disabled = true
+    resultado.textContent = "⏳ Cadastrando volumes..."
+
+    try{
+        let cadastrados = ""
+        let erros = []
+
+        for(let i=1; i<=volumeTotal; i++){
+            const resp = await fetch("/pedidos-volume",{
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({
+                    numero_pedido: pedido,
+                    volume_atual: i,
+                    volume_total: volumeTotal,
+                    palete_codigo: palete
+                })
+            })
+            const dados = await resp.json()
+
+            if(dados.detail){
+                erros.push("Vol "+i+": "+dados.detail)
+            } else {
+                cadastrados += pedido+" "+
+                    String(i).padStart(3,"0")+"/"+
+                    String(volumeTotal).padStart(3,"0")+"\n"
+            }
+        }
+
+        if(erros.length > 0){
+            resultado.textContent = "⚠️ Alguns erros:\n\n"+erros.join("\n")
+            flash("erro")
+        } else {
+            resultado.textContent =
+                "✅ VOLUMES CADASTRADOS!\n\n"+
+                cadastrados+
+                "\nPalete: "+palete
+            flash("sucesso")
+            document.getElementById("pedido").value=""
+            document.getElementById("volume_total").value=""
+            document.getElementById("pedido").focus()
+        }
+    }catch(e){
+        resultado.textContent = "❌ Erro de conexão ao cadastrar."
+        flash("erro")
+    }
+    btn.disabled = false
+}
+</script>
+</body>
+</html>"""
+
+
+# ─────────────────────────────────────────────
+#  TELA CONFERENTE v2  (montagem inteligente de palete)
+# ─────────────────────────────────────────────
+
+@app.get("/conferente-v2", response_class=HTMLResponse)
+def tela_conferente_v2():
+    return """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TCruzLoc_Dyo – Montagem Palete</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#111;color:white;padding:20px;}
+.box{background:#1b1b1b;max-width:950px;margin:auto;padding:30px;border-radius:14px;box-shadow:0 0 20px #000;}
+h1{color:#00ff88;font-size:38px;margin-bottom:4px;}
+h2{font-size:20px;color:#aaa;margin-bottom:18px;}
+label{color:#00ff88;font-weight:bold;display:block;margin-top:14px;margin-bottom:5px;}
+input{
+    width:100%;padding:14px;font-size:22px;
+    background:#000;color:#00ff88;
+    border:2px solid #00ff88;border-radius:10px;margin-top:4px;
+}
+input::placeholder{color:#555;}
+hr{border-color:#333;margin:22px 0;}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.btns{display:flex;gap:12px;margin-top:22px;}
+button{
+    flex:1;padding:18px;font-size:20px;
+    color:white;border:none;border-radius:10px;cursor:pointer;
+    transition:transform .12s;
+}
+button:hover{transform:scale(1.01);}
+button:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.btn-add{background:#198754;}
+.btn-fin{background:#0d6efd;}
+.btn-reset{background:#6c757d;font-size:16px;padding:10px;}
+pre{
+    background:#000;color:#00ff88;padding:22px;font-size:20px;
+    white-space:pre-wrap;margin-top:20px;border-radius:12px;
+    border:2px solid #333;min-height:160px;
+}
+#status{
+    margin-top:10px;font-size:14px;color:#aaa;
+    min-height:20px;
+}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>TCruzLoc_Dyo</h1>
+  <h2>Montagem Inteligente de Palete</h2>
+
+  <label>Palete</label>
+  <input id="palete" placeholder="Ex: PAL001" autofocus>
+
+  <label>Endereço</label>
+  <input id="endereco" placeholder="Ex: R07 014 1">
+
+  <hr>
+
+  <label>Pedido</label>
+  <input id="pedido" placeholder="Ex: 349596">
+
+  <div class="grid">
+    <div>
+      <label>Vol. inicial</label>
+      <input id="vol_inicial" type="number" min="1" placeholder="1">
+    </div>
+    <div>
+      <label>Vol. final</label>
+      <input id="vol_final" type="number" min="1" placeholder="6">
+    </div>
+    <div>
+      <label>Total do pedido</label>
+      <input id="vol_total" type="number" min="1" placeholder="10">
+    </div>
+  </div>
+
+  <div class="btns">
+    <button class="btn-add" id="btnAdd" onclick="adicionarAoPalete()">➕ Adicionar ao Palete</button>
+    <button class="btn-fin" id="btnFin" onclick="finalizarPalete()">✅ Finalizar Palete</button>
+  </div>
+  <div style="margin-top:10px;">
+    <button class="btn-reset" onclick="resetarTela()">🔄 Novo palete</button>
+  </div>
+
+  <div id="status"></div>
+  <pre id="resultado">Pedidos no palete aparecerão aqui...</pre>
+</div>
+
+<script>
+let resumo = []
+
+// ── navegação por Enter ──
+document.getElementById("palete").addEventListener("keypress",    e=>{ if(e.key==="Enter") document.getElementById("endereco").focus() })
+document.getElementById("endereco").addEventListener("keypress",  e=>{ if(e.key==="Enter") document.getElementById("pedido").focus() })
+document.getElementById("pedido").addEventListener("keypress",    e=>{ if(e.key==="Enter") document.getElementById("vol_inicial").focus() })
+document.getElementById("vol_inicial").addEventListener("keypress",e=>{ if(e.key==="Enter") document.getElementById("vol_final").focus() })
+document.getElementById("vol_final").addEventListener("keypress", e=>{ if(e.key==="Enter") document.getElementById("vol_total").focus() })
+document.getElementById("vol_total").addEventListener("keypress", e=>{ if(e.key==="Enter") adicionarAoPalete() })
+
+function status(msg, cor="#aaa"){
+    const el = document.getElementById("status")
+    el.textContent = msg
+    el.style.color = cor
+}
+
+function fmt(n, t){ return String(n).padStart(3,"0")+"/"+String(t).padStart(3,"0") }
+
+function renderResumo(){
+    if(resumo.length===0){
+        document.getElementById("resultado").textContent = "Pedidos no palete aparecerão aqui..."
+        return
+    }
+    const palete   = resumo[0].palete
+    const endereco = resumo[0].endereco
+
+    // agrupa pedidos (mesmo pedido pode ter sido adicionado em lotes)
+    let agrupado = {}
+    resumo.forEach(item=>{
+        if(!agrupado[item.pedido]){
+            agrupado[item.pedido] = {ini:item.ini, fin:item.fin, total:item.total}
+        } else {
+            agrupado[item.pedido].ini = Math.min(agrupado[item.pedido].ini, item.ini)
+            agrupado[item.pedido].fin = Math.max(agrupado[item.pedido].fin, item.fin)
+        }
+    })
+
+    let txt = "PALETE:   "+palete+"\nENDEREÇO: "+endereco+"\n\n"+"PEDIDOS:\n\n"
+    for(const ped in agrupado){
+        const a = agrupado[ped]
+        txt += ped+"\n  "+fmt(a.ini,a.total)+" até "+fmt(a.fin,a.total)+"\n\n"
+    }
+    document.getElementById("resultado").textContent = txt
+}
+
+async function adicionarAoPalete(){
+    const palete   = document.getElementById("palete").value.trim()
+    const endereco = document.getElementById("endereco").value.trim()
+    const pedido   = document.getElementById("pedido").value.trim()
+    const ini      = parseInt(document.getElementById("vol_inicial").value)
+    const fin      = parseInt(document.getElementById("vol_final").value)
+    const total    = parseInt(document.getElementById("vol_total").value)
+
+    if(!palete || !endereco || !pedido || !ini || !fin || !total){
+        status("⚠️ Preencha todos os campos.", "#ffaa00"); return
+    }
+    if(fin < ini){
+        status("⚠️ Vol. final não pode ser menor que o inicial.", "#ffaa00"); return
+    }
+    if(fin > total){
+        status("⚠️ Vol. final não pode ser maior que o total.", "#ffaa00"); return
+    }
+
+    document.getElementById("btnAdd").disabled = true
+    document.getElementById("btnFin").disabled = true
+    status("⏳ Criando/verificando palete...")
+
+    try{
+        // 1. cria ou reutiliza palete
+        const rPalete = await fetch("/paletes/manual",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({codigo_palete:palete, codigo_endereco:endereco})
+        })
+        const dPalete = await rPalete.json()
+
+        if(dPalete.detail){
+            status("❌ "+dPalete.detail, "#ff4444")
+            document.getElementById("btnAdd").disabled = false
+            document.getElementById("btnFin").disabled = false
+            return
+        }
+
+        status("⏳ Cadastrando "+(fin-ini+1)+" volume(s)...")
+
+        // 2. cadastra cada volume
+        for(let i=ini; i<=fin; i++){
+            const rVol = await fetch("/pedidos-volume",{
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({
+                    numero_pedido: pedido,
+                    volume_atual:  i,
+                    volume_total:  total,
+                    palete_codigo: palete
+                })
+            })
+            const dVol = await rVol.json()
+            if(dVol.detail){
+                status("❌ Vol "+i+": "+dVol.detail, "#ff4444")
+                document.getElementById("btnAdd").disabled = false
+                document.getElementById("btnFin").disabled = false
+                return
+            }
+        }
+
+        resumo.push({palete, endereco, pedido, ini, fin, total})
+        renderResumo()
+        status("✅ "+(fin-ini+1)+" volume(s) de "+pedido+" adicionados!", "#00ff88")
+
+        // limpa só os campos de pedido/volume
+        document.getElementById("pedido").value=""
+        document.getElementById("vol_inicial").value=""
+        document.getElementById("vol_final").value=""
+        document.getElementById("vol_total").value=""
+        document.getElementById("pedido").focus()
+
+    }catch(e){
+        status("❌ Erro de conexão. Verifique o servidor.", "#ff4444")
+        console.error(e)
+    }
+
+    document.getElementById("btnAdd").disabled = false
+    document.getElementById("btnFin").disabled = false
+}
+
+function finalizarPalete(){
+    const palete   = document.getElementById("palete").value.trim()
+    const endereco = document.getElementById("endereco").value.trim()
+
+    if(!palete || !endereco){
+        status("⚠️ Informe palete e endereço.", "#ffaa00"); return
+    }
+    if(resumo.length===0){
+        status("⚠️ Nenhum pedido adicionado ainda.", "#ffaa00"); return
+    }
+
+    let agrupado = {}
+    resumo.forEach(item=>{
+        if(!agrupado[item.pedido]) agrupado[item.pedido]={ini:item.ini,fin:item.fin,total:item.total}
+        else{
+            agrupado[item.pedido].ini = Math.min(agrupado[item.pedido].ini, item.ini)
+            agrupado[item.pedido].fin = Math.max(agrupado[item.pedido].fin, item.fin)
+        }
+    })
+
+    let txt = "✅ PALETE FINALIZADO\n\n"
+    txt += "PALETE:   "+palete+"\nENDEREÇO: "+endereco+"\nSTATUS:   EM USO\n\n"
+    txt += "RESUMO:\n\n"
+    for(const ped in agrupado){
+        const a = agrupado[ped]
+        txt += ped+"\n  "+fmt(a.ini,a.total)+" até "+fmt(a.fin,a.total)+"\n\n"
+    }
+    document.getElementById("resultado").textContent = txt
+    status("Palete finalizado. Clique em 'Novo palete' para recomeçar.", "#00ff88")
+    document.getElementById("btnAdd").disabled = true
+    document.getElementById("btnFin").disabled = true
+}
+
+function resetarTela(){
+    resumo = []
+    document.getElementById("palete").value=""
+    document.getElementById("endereco").value=""
+    document.getElementById("pedido").value=""
+    document.getElementById("vol_inicial").value=""
+    document.getElementById("vol_final").value=""
+    document.getElementById("vol_total").value=""
+    document.getElementById("resultado").textContent="Pedidos no palete aparecerão aqui..."
+    document.getElementById("btnAdd").disabled=false
+    document.getElementById("btnFin").disabled=false
+    status("")
+    document.getElementById("palete").focus()
+}
+</script>
+</body>
+</html>"""
+
+
+# ─────────────────────────────────────────────
+#  GERENCIAR VOLUMES
+# ─────────────────────────────────────────────
+
+@app.get("/gerenciar-volumes", response_class=HTMLResponse)
+def gerenciar_volumes():
+    return """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerenciar Volumes</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial;background:#111;color:white;padding:20px;}
+.box{background:#1b1b1b;max-width:1100px;margin:auto;padding:28px;border-radius:14px;}
+h1{color:#00ff88;margin-bottom:16px;}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:center;}
+input[type=text]{
+    padding:10px 14px;font-size:16px;background:#000;color:#00ff88;
+    border:2px solid #00ff88;border-radius:8px;width:260px;
+}
+input::placeholder{color:#555;}
+button{padding:10px 18px;background:#198754;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;}
+button:hover{opacity:.85;}
+button.danger{background:#dc3545;}
+button.secondary{background:#444;}
+#info{font-size:14px;color:#aaa;margin-left:auto;}
+table{width:100%;border-collapse:collapse;margin-top:8px;}
+th,td{border:1px solid #333;padding:10px;text-align:left;font-size:14px;}
+th{color:#00ff88;background:#1a1a1a;position:sticky;top:0;}
+tr:hover{background:#1f1f1f;}
+input[type=checkbox]{width:16px;height:16px;cursor:pointer;}
+.tag{
+    display:inline-block;padding:2px 8px;border-radius:4px;
+    font-size:12px;background:#0d6efd33;color:#6ea8fe;border:1px solid #0d6efd55;
+}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Gerenciar Volumes</h1>
+
+  <div class="toolbar">
+    <button onclick="carregar()">🔄 Atualizar</button>
+    <button onclick="selecionarTodos()" class="secondary">☑ Selecionar todos</button>
+    <button onclick="desselecionarTodos()" class="secondary">☐ Desmarcar todos</button>
+    <button onclick="apagarSelecionados()" class="danger">🗑 Apagar selecionados</button>
+    <input type="text" id="filtro" placeholder="Filtrar pedido / palete / endereço..." oninput="filtrar()">
+    <span id="info">–</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:36px"><input type="checkbox" id="chkAll" onchange="toggleAll(this)"></th>
+        <th>ID</th>
+        <th>Pedido</th>
+        <th>Volume</th>
+        <th>Palete</th>
+        <th>Endereço</th>
+        <th style="width:90px">Ação</th>
+      </tr>
+    </thead>
+    <tbody id="tabela"></tbody>
+  </table>
+</div>
+
+<script>
+let dados = []
 
 async function carregar(){
+    document.getElementById("tabela").innerHTML = "<tr><td colspan='7' style='color:#aaa'>Carregando...</td></tr>"
+    const r = await fetch("/pedidos-volume")
+    dados = await r.json()
+    filtrar()
+}
 
-    const resposta = await fetch("/pedidos-volume")
-    const dados = await resposta.json()
+function filtrar(){
+    const q = document.getElementById("filtro").value.trim().toLowerCase()
+    const filtrados = q
+        ? dados.filter(d=>
+            String(d.numero_pedido).toLowerCase().includes(q) ||
+            d.palete_codigo.toLowerCase().includes(q) ||
+            (d.endereco_codigo||"").toLowerCase().includes(q)
+          )
+        : dados
 
     const tabela = document.getElementById("tabela")
     tabela.innerHTML = ""
 
-    dados.forEach(item=>{
+    if(filtrados.length===0){
+        tabela.innerHTML="<tr><td colspan='7' style='color:#aaa'>Nenhum registro encontrado.</td></tr>"
+        document.getElementById("info").textContent="0 registros"
+        return
+    }
 
+    filtrados.forEach(item=>{
+        const vol = String(item.volume_atual).padStart(3,"0")+"/"+String(item.volume_total).padStart(3,"0")
         tabela.innerHTML += `
         <tr>
-            <td><input type="checkbox" class="check" value="${item.id}"></td>
-            <td>${item.id}</td>
-            <td>${item.numero_pedido}</td>
-            <td>${String(item.volume_atual).padStart(3,"0")}/${String(item.volume_total).padStart(3,"0")}</td>
-            <td>${item.palete_codigo}</td>
-            <td>${item.endereco_codigo}</td>
-            <td>
-                <button class="danger"
-                    onclick="apagarUm(${item.id})">
-                    Apagar
-                </button>
-            </td>
+          <td><input type="checkbox" class="check" value="${item.id}"></td>
+          <td>${item.id}</td>
+          <td>${item.numero_pedido}</td>
+          <td><span class="tag">${vol}</span></td>
+          <td>${item.palete_codigo}</td>
+          <td>${item.endereco_codigo||"—"}</td>
+          <td><button class="danger" onclick="apagarUm(${item.id})">Apagar</button></td>
         </tr>`
     })
+    document.getElementById("info").textContent = filtrados.length+" registro(s)"
 }
 
-function selecionarTodos(){
-
-    document
-        .querySelectorAll(".check")
-        .forEach(c=>c.checked=true)
-}
+function selecionarTodos(){ document.querySelectorAll(".check").forEach(c=>c.checked=true) }
+function desselecionarTodos(){ document.querySelectorAll(".check").forEach(c=>c.checked=false) }
+function toggleAll(el){ document.querySelectorAll(".check").forEach(c=>c.checked=el.checked) }
 
 async function apagarUm(id){
-
-    if(!confirm("Deseja apagar este volume?"))
-        return
-
-    await fetch(
-        "/pedidos-volume/" + id,
-        {method:"DELETE"}
-    )
-
+    if(!confirm("Deseja apagar este volume?")) return
+    await fetch("/pedidos-volume/"+id, {method:"DELETE"})
     carregar()
 }
 
 async function apagarSelecionados(){
-
-    const ids = Array.from(
-        document.querySelectorAll(".check:checked")
-    ).map(c=>parseInt(c.value))
-
-    if(ids.length===0){
-
-        alert("Selecione pelo menos um volume.")
-        return
-    }
-
-    if(!confirm(
-        "Deseja apagar os volumes selecionados?"
-    )){
-        return
-    }
-
-    await fetch(
-        "/pedidos-volume/deletar-varios",
-        {
-            method:"POST",
-
-            headers:{
-                "Content-Type":"application/json"
-            },
-
-            body:JSON.stringify({
-                ids: ids
-            })
-        }
-    )
-
+    const ids = Array.from(document.querySelectorAll(".check:checked")).map(c=>parseInt(c.value))
+    if(ids.length===0){ alert("Selecione pelo menos um volume."); return }
+    if(!confirm("Deseja apagar "+ids.length+" volume(s)?")) return
+    await fetch("/pedidos-volume/deletar-varios",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ids})
+    })
     carregar()
 }
 
 carregar()
-
 </script>
 </body>
-</html>
-"""
+</html>"""
 
 
+# ─────────────────────────────────────────────
+#  UTILITÁRIOS
+# ─────────────────────────────────────────────
 
 @app.get("/seed")
 def seed(db: Session = Depends(get_db)):
-
     enderecos_base = [
-
         ("R07 014 1","R07","014","1"),
         ("R07 016 1","R07","016","1"),
         ("R07 018 1","R07","018","1"),
@@ -1274,7 +920,6 @@ def seed(db: Session = Depends(get_db)):
         ("R07 024 1","R07","024","1"),
         ("R07 026 1","R07","026","1"),
         ("R07 028 1","R07","028","1"),
-
         ("R07 014 1F","R07","014","1F"),
         ("R07 016 1F","R07","016","1F"),
         ("R07 018 1F","R07","018","1F"),
@@ -1284,75 +929,29 @@ def seed(db: Session = Depends(get_db)):
         ("R07 026 1F","R07","026","1F"),
         ("R07 028 1F","R07","028","1F"),
     ]
-
     criados = 0
-
     for codigo, rua, predio, andar in enderecos_base:
-
-        existe = db.query(models.Endereco).filter(
-            models.Endereco.codigo == codigo
-        ).first()
-
+        existe = db.query(models.Endereco).filter(models.Endereco.codigo == codigo).first()
         if existe:
-
-            existe.rua = rua
-            existe.predio = predio
-            existe.andar = andar
-            existe.frente = "A"
-            existe.comprimento_cm = 100
-            existe.largura_cm = 100
-            existe.altura_cm = 100
-            existe.capacidade_total = 1
-            existe.capacidade_usada = 0
-
+            existe.rua = rua; existe.predio = predio; existe.andar = andar
+            existe.frente = "A"; existe.comprimento_cm = 100
+            existe.largura_cm = 100; existe.altura_cm = 100
+            existe.capacidade_total = 1; existe.capacidade_usada = 0
         else:
-
-            novo = models.Endereco(
-                codigo=codigo,
-                rua=rua,
-                predio=predio,
-                andar=andar,
-                frente="A",
-                comprimento_cm=100,
-                largura_cm=100,
-                altura_cm=100,
-                capacidade_total=1,
-                capacidade_usada=0
-            )
-
-            db.add(novo)
+            db.add(models.Endereco(
+                codigo=codigo, rua=rua, predio=predio, andar=andar,
+                frente="A", comprimento_cm=100, largura_cm=100, altura_cm=100,
+                capacidade_total=1, capacidade_usada=0
+            ))
             criados += 1
-
     db.commit()
+    return {"status": "ok", "enderecos_criados": criados}
 
-    return {
-        "status":"ok",
-        "enderecos_criados": criados
-    }
+
 @app.get("/reset-teste")
 def reset_teste(db: Session = Depends(get_db)):
-
     db.query(models.PedidoVolume).delete()
     db.query(models.Palete).delete()
-
-    db.query(models.Endereco).update({
-        "capacidade_usada": 0
-    })
-
+    db.query(models.Endereco).update({"capacidade_usada": 0})
     db.commit()
-
-    return {
-        "status": "ok",
-        "mensagem": "Paletes e volumes apagados. Endereços liberados."
-    }
-
-@app.post("/paletes/manual")
-def criar_palete_manual(
-    dados: schema.PaleteManualCriar,
-    db: Session = Depends(get_db)
-):
-    return crud.criar_ou_usar_palete_manual(
-        db,
-        dados.codigo_palete,
-        dados.codigo_endereco
-    )
+    return {"status": "ok", "mensagem": "Paletes e volumes apagados. Endereços liberados."}

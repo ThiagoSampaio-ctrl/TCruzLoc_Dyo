@@ -1,6 +1,7 @@
 from typing import Optional
 from pydantic import BaseModel
 
+
 class EnderecoResposta(BaseModel):
     id: int
     codigo: str
@@ -30,8 +31,14 @@ class CaixaResposta(BaseModel):
         from_attributes = True
 
 
+# ── CORRIGIDO: classe duplicada removida (havia dois PaleteCriar) ──
 class PaleteCriar(BaseModel):
     codigo: str
+
+
+class PaleteManualCriar(BaseModel):
+    codigo_palete: str
+    codigo_endereco: str
 
 
 class PaleteResposta(BaseModel):
@@ -66,12 +73,3 @@ class PedidoVolumeResposta(BaseModel):
 
 class DeletarVolumes(BaseModel):
     ids: list[int]
-
-class PaleteCriar(BaseModel):
-    codigo: str
-
-
-class PaleteManualCriar(BaseModel):
-    codigo_palete: str
-    codigo_endereco: str
-
