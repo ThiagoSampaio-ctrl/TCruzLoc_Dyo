@@ -955,3 +955,71 @@ def reset_teste(db: Session = Depends(get_db)):
     db.query(models.Endereco).update({"capacidade_usada": 0})
     db.commit()
     return {"status": "ok", "mensagem": "Paletes e volumes apagados. Endereços liberados."}
+
+@app.get("/app", response_class=HTMLResponse)
+def app_home():
+    return """
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartLocator</title>
+<style>
+body{
+    font-family:Arial,sans-serif;
+    background:#111;
+    color:white;
+    margin:0;
+    padding:25px;
+}
+.box{
+    max-width:700px;
+    margin:auto;
+    background:#1b1b1b;
+    padding:35px;
+    border-radius:14px;
+    box-shadow:0 0 20px #000;
+}
+h1{
+    color:#00ff88;
+    font-size:40px;
+}
+p{
+    color:#aaa;
+    font-size:18px;
+}
+a{
+    display:block;
+    text-decoration:none;
+    color:white;
+    background:#198754;
+    padding:20px;
+    margin-top:18px;
+    border-radius:10px;
+    font-size:22px;
+    text-align:center;
+}
+a:hover{
+    opacity:.85;
+}
+.sec{
+    background:#0d6efd;
+}
+.dark{
+    background:#444;
+}
+</style>
+</head>
+<body>
+<div class="box">
+    <h1>SmartLocator</h1>
+    <p>Escolha o módulo que deseja acessar:</p>
+
+    <a href="/conferente-v2">Conferente</a>
+    <a class="sec" href="/gerenciar-volumes">Gerenciar Volumes</a>
+    <a class="dark" href="/operacao">Operação / Consulta</a>
+</div>
+</body>
+</html>
+"""
