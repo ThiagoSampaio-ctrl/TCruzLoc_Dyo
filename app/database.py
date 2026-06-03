@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL não configurada no Render.")
+    raise RuntimeError("DATABASE_URL não configurada. Configure o Postgres no Render.")
 
 engine = create_engine(
     DATABASE_URL,
