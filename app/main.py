@@ -352,7 +352,7 @@ async function buscarPedido(){
 
 @app.get("/conferente", response_class=HTMLResponse)
 def tela_conferente():
-    return """<!DOCTYPE html>
+    return r"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
