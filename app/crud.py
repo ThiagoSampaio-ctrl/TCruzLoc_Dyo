@@ -85,7 +85,7 @@ def listar_paletes(db: Session):
 
 def criar_ou_usar_palete_manual(db: Session, codigo_palete: str, codigo_endereco: str):
     codigo_palete   = codigo_palete.strip().upper()
-    codigo_endereco = normalizar_endereco(codigo_endereco)   # ← normaliza aqui
+    codigo_endereco = normalizar_endereco(codigo_endereco)
 
     # Verifica se endereço existe
     endereco = db.query(models.Endereco).filter(
@@ -98,14 +98,36 @@ def criar_ou_usar_palete_manual(db: Session, codigo_palete: str, codigo_endereco
                    f"Verifique o código ou rode /seed para criar os endereços."
         )
 
-    # Reutiliza palete existente
     palete = db.query(models.Palete).filter(
         models.Palete.codigo == codigo_palete
     ).first()
+
     if palete:
+        # ── PALETE JÁ EXISTE ──────────────────────────────────────────────
+        # O endereço digitado pelo conferente SEMPRE prevalece.
+        # Se mudou de endereço, atualiza o palete E os volumes vinculados.
+        if palete.endereco_codigo != codigo_endereco:
+            # libera capacidade do endereço antigo
+            end_antigo = db.query(models.Endereco).filter(
+                models.Endereco.codigo == palete.endereco_codigo
+            ).first()
+            if end_antigo and end_antigo.capacidade_usada > 0:
+                end_antigo.capacidade_usada -= 1
+
+            # atualiza o palete para o novo endereço
+            palete.endereco_codigo = codigo_endereco
+            endereco.capacidade_usada = (endereco.capacidade_usada or 0) + 1
+
+            # atualiza todos os volumes deste palete para o novo endereço
+            db.query(models.PedidoVolume).filter(
+                models.PedidoVolume.palete_codigo == codigo_palete
+            ).update({"endereco_codigo": codigo_endereco})
+
+            db.commit()
+        db.refresh(palete)
         return palete
 
-    # Cria novo palete
+    # ── PALETE NOVO ───────────────────────────────────────────────────────
     novo = models.Palete(
         codigo=codigo_palete,
         volume_total=0,
