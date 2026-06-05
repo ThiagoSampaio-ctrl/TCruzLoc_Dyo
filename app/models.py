@@ -50,3 +50,4 @@ class PedidoVolume(Base):
     palete_codigo   = Column(String(30), ForeignKey("paletes.codigo"), nullable=False)
     endereco_codigo = Column(String(30), ForeignKey("enderecos.codigo"), nullable=True)
     criado_em       = Column(DateTime(timezone=True), server_default=func.now())
+

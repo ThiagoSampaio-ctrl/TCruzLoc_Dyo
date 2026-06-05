@@ -221,3 +221,4 @@ def limpar_pedidos_duplicados(db: Session):
             vistos.add(chave)
     db.commit()
     return {"ok": True, "removidos": removidos}
+

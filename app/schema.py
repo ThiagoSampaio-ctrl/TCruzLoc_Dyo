@@ -61,3 +61,5 @@ class PedidoVolumeResposta(BaseModel):
 
 class DeletarVolumes(BaseModel):
     ids: list[int]
+
+    
