@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Column, Integer, String, ForeignKey
 from app.database import Base
 
 
@@ -37,7 +37,6 @@ class Palete(Base):
     volume_total    = Column(Integer, default=0)
     endereco_codigo = Column(String(30), ForeignKey("enderecos.codigo"), nullable=False)
     status          = Column(String(20), default="EM USO")
-    criado_em       = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class PedidoVolume(Base):
@@ -49,5 +48,3 @@ class PedidoVolume(Base):
     volume_total    = Column(Integer, nullable=False)
     palete_codigo   = Column(String(30), ForeignKey("paletes.codigo"), nullable=False)
     endereco_codigo = Column(String(30), ForeignKey("enderecos.codigo"), nullable=True)
-    criado_em       = Column(DateTime(timezone=True), server_default=func.now())
-
