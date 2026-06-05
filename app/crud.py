@@ -1,6 +1,33 @@
+import re
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app import models, schema
+
+
+# ═══════════════════════════════════════════════
+#  NORMALIZAÇÃO DE ENDEREÇO
+#  Aceita qualquer formato:
+#    r070141 | R070141 | R07 014 1 | r07 014 1 | R07-014-1 | r07014 1f
+#  → sempre retorna "R07 014 1" ou "R07 014 1F"
+# ═══════════════════════════════════════════════
+
+def normalizar_endereco(codigo: str) -> str:
+    # limpa e coloca maiúsculo
+    s = re.sub(r'[\s\-]+', '', codigo.strip().upper())
+
+    # R + 2 dígitos + 3 dígitos + sufixo (1, 2, 1F, 2F, 1f …)
+    # ex: R070141 -> R07 014 1   |  R0701 41F -> R07 014 1F
+    m = re.match(r'^R(\d{2})(\d{3})(\d{1,2}[A-Z]?)$', s)
+    if m:
+        return f"R{m.group(1)} {m.group(2)} {m.group(3)}"
+
+    # R + 3 dígitos + 3 dígitos + sufixo
+    m = re.match(r'^R(\d{3})(\d{3})(\d{1,2}[A-Z]?)$', s)
+    if m:
+        return f"R{m.group(1)} {m.group(2)} {m.group(3)}"
+
+    # fallback: só maiúsculo com espaços simples
+    return ' '.join(codigo.strip().upper().split())
 
 
 # ═══════════════════════════════════════════════
@@ -12,7 +39,7 @@ def listar_enderecos(db: Session):
 
 
 def detalhes_endereco(db: Session, codigo: str):
-    codigo = codigo.strip().upper()
+    codigo = normalizar_endereco(codigo)
     paletes = (db.query(models.Palete)
                .filter(models.Palete.endereco_codigo == codigo)
                .order_by(models.Palete.codigo).all())
@@ -58,7 +85,7 @@ def listar_paletes(db: Session):
 
 def criar_ou_usar_palete_manual(db: Session, codigo_palete: str, codigo_endereco: str):
     codigo_palete   = codigo_palete.strip().upper()
-    codigo_endereco = codigo_endereco.strip().upper()
+    codigo_endereco = normalizar_endereco(codigo_endereco)   # ← normaliza aqui
 
     # Verifica se endereço existe
     endereco = db.query(models.Endereco).filter(
@@ -221,4 +248,3 @@ def limpar_pedidos_duplicados(db: Session):
             vistos.add(chave)
     db.commit()
     return {"ok": True, "removidos": removidos}
-
