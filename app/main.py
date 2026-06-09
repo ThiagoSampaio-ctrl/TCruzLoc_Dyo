@@ -185,11 +185,11 @@ def pwa_icon_512():
 @app.post("/auth/login", response_model=schema.LoginResposta)
 def api_login(dados: schema.LoginInput, db: Session=Depends(get_db)):
     return fazer_login(db, dados.login, dados.senha)
-
 @app.post("/auth/criar-usuario", response_model=schema.UsuarioResposta)
-def api_criar_usuario(dados: schema.UsuarioCriar, db: Session=Depends(get_db),
-                      authorization: str=Header(default="")):
-    get_usuario_atual(db, authorization)   # só usuário logado pode criar
+def api_criar_usuario(
+    dados: schema.UsuarioCriar,
+    db: Session = Depends(get_db)
+):
     return criar_usuario(db, dados.nome, dados.login, dados.senha)
 
 @app.get("/auth/me")
