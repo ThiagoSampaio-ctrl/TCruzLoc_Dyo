@@ -1182,7 +1182,14 @@ def pg_enderecos():
     <button class="btn bgh" onclick="carregar()">↺ Atualizar</button>
   </div>
 
-  <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+ <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
+  <button class="btn bgh" onclick="setFiltro('TODOS')">Todos</button>
+  <button class="btn bgh" onclick="setFiltro('LIVRE')">Livres</button>
+  <button class="btn bgh" onclick="setFiltro('PARCIAL')">Parciais</button>
+  <button class="btn bgh" onclick="setFiltro('OCUPADO')">Ocupados</button>
+</div>
+
+<div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
     <div class="metric" style="flex:1;min-width:110px;">
       <div class="ml">Livres</div>
       <div class="mv" id="cnt-l" style="color:var(--gtxt);">—</div>
@@ -1207,6 +1214,12 @@ def pg_enderecos():
 
 <script>
 var enderecos=[];
+var filtroAtual='TODOS';
+
+function setFiltro(status){
+  filtroAtual=status;
+  renderGrid();
+}
 
 async function carregar(){
   document.getElementById('grid').innerHTML='<p style="color:var(--txt3);padding:10px;">Carregando...</p>';
@@ -1228,7 +1241,18 @@ function corStatus(s){
 function renderGrid(){
   var g=document.getElementById('grid');
   g.innerHTML='';
-  enderecos.forEach(function(e){
+  var lista = enderecos;
+
+if(filtroAtual !== 'TODOS'){
+  lista = enderecos.filter(e => (e.status_ocupacao || 'LIVRE') === filtroAtual);
+}
+
+if(!lista.length){
+  g.innerHTML='<p style="color:var(--txt3);padding:10px;">Nenhum endereço encontrado nesse filtro.</p>';
+  return;
+}
+
+lista.forEach(function(e){
     var st=e.status_ocupacao||'LIVRE';
     var c=corStatus(st);
     var div=document.createElement('div');
