@@ -6,7 +6,7 @@ from app.auth import registrar
 
 
 # ═══════════════════════════════════════════════
-#  NORMALIZAÇÃO DE ENDEREÇO
+#  NORMALIZAÇÃO
 # ═══════════════════════════════════════════════
 
 def normalizar_endereco(codigo: str) -> str:
@@ -24,6 +24,20 @@ def normalizar_endereco(codigo: str) -> str:
 
 def listar_enderecos(db: Session):
     return db.query(models.Endereco).order_by(models.Endereco.codigo).all()
+
+
+def atualizar_status_endereco(db: Session, codigo: str, status: str, usuario=None):
+    e = db.query(models.Endereco).filter(models.Endereco.codigo == codigo).first()
+    if not e:
+        raise HTTPException(status_code=404, detail=f"Endereço '{codigo}' não encontrado")
+    status_ant = e.status_ocupacao or "LIVRE"
+    e.status_ocupacao = status
+    if usuario:
+        registrar(db, "STATUS_END", usuario,
+                  endereco_de=status_ant, endereco_para=status,
+                  detalhe_extra=f"Endereço {codigo}: {status_ant} → {status}")
+    db.commit(); db.refresh(e)
+    return e
 
 
 def detalhes_endereco(db: Session, codigo: str):
@@ -83,11 +97,10 @@ def criar_ou_usar_palete_manual(db: Session, codigo_palete: str,
 
     if palete:
         if palete.endereco_codigo != codigo_endereco:
-            end_antigo = db.query(models.Endereco).filter(
+            end_ant = db.query(models.Endereco).filter(
                 models.Endereco.codigo == palete.endereco_codigo).first()
-            if end_antigo and end_antigo.capacidade_usada > 0:
-                end_antigo.capacidade_usada -= 1
-
+            if end_ant and end_ant.capacidade_usada > 0:
+                end_ant.capacidade_usada -= 1
             palete.endereco_codigo = codigo_endereco
             endereco.capacidade_usada = (endereco.capacidade_usada or 0) + 1
             db.query(models.PedidoVolume).filter(
@@ -109,9 +122,8 @@ def criar_palete_auto(db: Session, palete: schema.PaleteCriar):
         models.Palete.codigo == palete.codigo).first()
     if existente: return existente
     for e in db.query(models.Endereco).order_by(models.Endereco.id).all():
-        tem = db.query(models.Palete).filter(
-            models.Palete.endereco_codigo == e.codigo).first()
-        if not tem:
+        if not db.query(models.Palete).filter(
+                models.Palete.endereco_codigo == e.codigo).first():
             novo = models.Palete(codigo=palete.codigo, volume_total=0,
                                  endereco_codigo=e.codigo, status="EM USO")
             e.capacidade_usada = 1
@@ -124,8 +136,7 @@ def criar_palete_auto(db: Session, palete: schema.PaleteCriar):
 #  PEDIDOS / VOLUMES
 # ═══════════════════════════════════════════════
 
-def criar_pedido_volume(db: Session, pedido: schema.PedidoVolumeCriar,
-                        usuario=None):
+def criar_pedido_volume(db: Session, pedido: schema.PedidoVolumeCriar, usuario=None):
     palete = db.query(models.Palete).filter(
         models.Palete.codigo == pedido.palete_codigo).first()
     if not palete:
@@ -151,7 +162,6 @@ def criar_pedido_volume(db: Session, pedido: schema.PedidoVolumeCriar,
         endereco_codigo=palete.endereco_codigo,
     )
     db.add(novo)
-
     if usuario:
         registrar(db, "CADASTRO", usuario,
                   numero_pedido=pedido.numero_pedido,
@@ -159,7 +169,6 @@ def criar_pedido_volume(db: Session, pedido: schema.PedidoVolumeCriar,
                   volume_total=pedido.volume_total,
                   palete_codigo=pedido.palete_codigo,
                   endereco_para=palete.endereco_codigo)
-
     db.commit(); db.refresh(novo)
     return novo
 
@@ -196,10 +205,8 @@ def deletar_pedido_volume(db: Session, volume_id: int, usuario=None):
     if usuario:
         registrar(db, "EXCLUSAO", usuario,
                   numero_pedido=v.numero_pedido,
-                  volume_atual=v.volume_atual,
-                  volume_total=v.volume_total,
-                  palete_codigo=v.palete_codigo,
-                  endereco_de=v.endereco_codigo)
+                  volume_atual=v.volume_atual, volume_total=v.volume_total,
+                  palete_codigo=v.palete_codigo, endereco_de=v.endereco_codigo)
     db.delete(v); db.commit()
     return {"ok": True}
 
@@ -211,57 +218,41 @@ def deletar_varios_pedidos_volume(db: Session, ids: list[int], usuario=None):
         if usuario:
             registrar(db, "EXCLUSAO", usuario,
                       numero_pedido=v.numero_pedido,
-                      volume_atual=v.volume_atual,
-                      volume_total=v.volume_total,
-                      palete_codigo=v.palete_codigo,
-                      endereco_de=v.endereco_codigo)
+                      volume_atual=v.volume_atual, volume_total=v.volume_total,
+                      palete_codigo=v.palete_codigo, endereco_de=v.endereco_codigo)
         db.delete(v)
     db.commit()
     return {"ok": True, "removidos": len(volumes)}
 
 
-def transferir_volumes(db: Session, dados: schema.TransferirVolumes,
-                       usuario=None):
-    """Move volumes selecionados para novo palete/endereço."""
+def transferir_volumes(db: Session, dados: schema.TransferirVolumes, usuario=None):
     novo_end = normalizar_endereco(dados.novo_endereco)
     novo_pal = dados.novo_palete.strip().upper()
-
-    # garante que endereço existe
     endereco = db.query(models.Endereco).filter(
         models.Endereco.codigo == novo_end).first()
     if not endereco:
-        raise HTTPException(status_code=404,
-            detail=f"Endereço '{novo_end}' não encontrado.")
-
-    # garante ou cria palete destino
+        raise HTTPException(status_code=404, detail=f"Endereço '{novo_end}' não encontrado.")
     palete_dest = db.query(models.Palete).filter(
         models.Palete.codigo == novo_pal).first()
     if not palete_dest:
         palete_dest = models.Palete(codigo=novo_pal, volume_total=0,
                                     endereco_codigo=novo_end, status="EM USO")
         endereco.capacidade_usada = (endereco.capacidade_usada or 0) + 1
-        db.add(palete_dest)
-        db.flush()
-
+        db.add(palete_dest); db.flush()
     volumes = db.query(models.PedidoVolume).filter(
         models.PedidoVolume.id.in_(dados.ids)).all()
     movidos = 0
     for v in volumes:
-        end_antigo = v.endereco_codigo
-        pal_antigo = v.palete_codigo
-        v.palete_codigo   = novo_pal
-        v.endereco_codigo = novo_end
+        end_ant, pal_ant = v.endereco_codigo, v.palete_codigo
+        v.palete_codigo = novo_pal; v.endereco_codigo = novo_end
         if usuario:
             registrar(db, "TRANSFERENCIA", usuario,
                       numero_pedido=v.numero_pedido,
-                      volume_atual=v.volume_atual,
-                      volume_total=v.volume_total,
-                      palete_codigo=novo_pal,
-                      endereco_de=end_antigo,
+                      volume_atual=v.volume_atual, volume_total=v.volume_total,
+                      palete_codigo=novo_pal, endereco_de=end_ant,
                       endereco_para=novo_end,
-                      detalhe_extra=f"De {pal_antigo} → {novo_pal}")
+                      detalhe_extra=f"De {pal_ant} → {novo_pal}")
         movidos += 1
-
     db.commit()
     return {"ok": True, "movidos": movidos,
             "novo_palete": novo_pal, "novo_endereco": novo_end}
@@ -280,10 +271,6 @@ def limpar_pedidos_duplicados(db: Session):
     db.commit()
     return {"ok": True, "removidos": removidos}
 
-
-# ═══════════════════════════════════════════════
-#  HISTÓRICO
-# ═══════════════════════════════════════════════
 
 def listar_historico(db: Session, limit: int = 500):
     return (db.query(models.Historico)

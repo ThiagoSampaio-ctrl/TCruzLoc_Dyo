@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, func
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, func
 from app.database import Base
 
 
@@ -15,6 +15,8 @@ class Endereco(Base):
     altura_cm        = Column(Integer, default=200)
     capacidade_total = Column(Integer, default=1)
     capacidade_usada = Column(Integer, default=0)
+    # LIVRE | PARCIAL | OCUPADO — definido manualmente pelo operador
+    status_ocupacao  = Column(String(10), default="LIVRE")
 
 
 class TipoCaixa(Base):
@@ -52,12 +54,11 @@ class Usuario(Base):
     nome       = Column(String(60), nullable=False)
     login      = Column(String(40), unique=True, index=True, nullable=False)
     senha_hash = Column(String(128), nullable=False)
-    ativo      = Column(Integer, default=1)   # 1=ativo, 0=inativo
+    ativo      = Column(Integer, default=1)
     criado_em  = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class Sessao(Base):
-    """Token simples de sessão — sem JWT, sem complexidade."""
     __tablename__ = "sessoes"
     id         = Column(Integer, primary_key=True, index=True)
     token      = Column(String(64), unique=True, index=True, nullable=False)
@@ -67,20 +68,16 @@ class Sessao(Base):
 
 
 class Historico(Base):
-    """Registro auditável de todas as ações do sistema."""
     __tablename__ = "historico"
-    id              = Column(Integer, primary_key=True, index=True)
-    # quem fez
-    usuario_id      = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    usuario_nome    = Column(String(60), nullable=True)   # desnormalizado para não perder se usuário for deletado
-    # o que fez
-    acao            = Column(String(30), nullable=False)  # CADASTRO | EXCLUSAO | TRANSFERENCIA
-    # detalhes
-    numero_pedido   = Column(String(50), nullable=True)
-    volume_atual    = Column(Integer, nullable=True)
-    volume_total    = Column(Integer, nullable=True)
-    palete_codigo   = Column(String(30), nullable=True)
-    endereco_de     = Column(String(30), nullable=True)   # endereço anterior (transferência/exclusão)
-    endereco_para   = Column(String(30), nullable=True)   # endereço novo (cadastro/transferência)
-    detalhe_extra   = Column(String(200), nullable=True)  # info adicional livre
-    criado_em       = Column(DateTime(timezone=True), server_default=func.now())
+    id            = Column(Integer, primary_key=True, index=True)
+    usuario_id    = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    usuario_nome  = Column(String(60), nullable=True)
+    acao          = Column(String(30), nullable=False)
+    numero_pedido = Column(String(50), nullable=True)
+    volume_atual  = Column(Integer, nullable=True)
+    volume_total  = Column(Integer, nullable=True)
+    palete_codigo = Column(String(30), nullable=True)
+    endereco_de   = Column(String(30), nullable=True)
+    endereco_para = Column(String(30), nullable=True)
+    detalhe_extra = Column(String(200), nullable=True)
+    criado_em     = Column(DateTime(timezone=True), server_default=func.now())
