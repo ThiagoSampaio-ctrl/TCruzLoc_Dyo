@@ -16,6 +16,15 @@ class CaixaResposta(BaseModel):
     largura_cm: int; altura_cm: int; volume_cm3: int
     class Config: from_attributes = True
 
+# ─── Endereço ───────────────────────────────
+class EnderecoResposta(BaseModel):
+    id: int; codigo: str; rua: str; predio: str; andar: str
+    frente: str; comprimento_cm: int; largura_cm: int
+    altura_cm: int; capacidade_total: int; capacidade_usada: int
+    class Config: from_attributes = True
+
+class EnderecoStatusUpdate(BaseModel):
+    status: str
 
 # ─── Palete ─────────────────────────────────
 class PaleteCriar(BaseModel):
