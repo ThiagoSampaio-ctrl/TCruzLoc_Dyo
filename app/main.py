@@ -1,3 +1,4 @@
+from sqlalchemy import text
 import base64 as _b64, json as _json, os as _os
 from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -1326,3 +1327,18 @@ def reset_dados(db: Session = Depends(get_db)):
     db.query(models.Endereco).update({"capacidade_usada": 0})
     db.commit()
     return {"status": "ok", "aviso": "Paletes e volumes apagados. Endereços mantidos."}
+
+@app.get("/migrar-banco")
+def migrar_banco(db: Session = Depends(get_db)):
+    db.execute(
+        text(
+            "ALTER TABLE enderecos "
+            "ADD COLUMN IF NOT EXISTS status_ocupacao VARCHAR DEFAULT 'LIVRE'"
+        )
+    )
+    db.commit()
+
+    return {
+        "status": "ok",
+        "mensagem": "Banco atualizado com status_ocupacao"
+    }
