@@ -11,11 +11,16 @@ _sqlite = _url.startswith("sqlite")
 engine = create_engine(
     _url,
     connect_args={"check_same_thread": False} if _sqlite else {},
-    **({} if _sqlite else {"pool_pre_ping": True, "pool_size": 5, "max_overflow": 10})
+    **({} if _sqlite else {
+        "pool_pre_ping": True,
+        "pool_size": 5,
+        "max_overflow": 10,
+    })
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 
 def get_db():
     db = SessionLocal()
@@ -23,6 +28,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
 def ping_db() -> bool:
     try:
