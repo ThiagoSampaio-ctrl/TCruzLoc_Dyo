@@ -643,7 +643,7 @@ async function criar(){{
 
 
 # ══════════════════════════════════════════════════════════════════
-#  PÁGINA: CONFERENTE v2 — com indicador de status do endereço
+#  PÁGINA: CONFERENTE v2 — com dropdown de endereços + status colorido
 # ══════════════════════════════════════════════════════════════════
 @app.get("/conferente-v2", response_class=HTMLResponse)
 def pg_conferente():
@@ -664,10 +664,17 @@ def pg_conferente():
       <div class="f"><label>Endereço</label>
         <div style="position:relative;">
           <input class="fi" id="endereco" placeholder="Ex: R07 014 1 ou R070141"
-            oninput="verificarEndereco()" onblur="verificarEndereco()">
+            autocomplete="off"
+            oninput="filtrarDropdown();verificarEndereco()"
+            onfocus="abrirDropdown()"
+            onblur="setTimeout(fecharDropdown,150);verificarEndereco()">
           <span id="end-badge" style="position:absolute;right:10px;top:50%;
             transform:translateY(-50%);font-size:10px;padding:2px 7px;
             border-radius:4px;font-family:var(--mono);font-weight:600;display:none;"></span>
+          <div id="end-dropdown" style="display:none;position:absolute;top:calc(100% + 4px);
+            left:0;right:0;max-height:260px;overflow-y:auto;background:var(--s1);
+            border:1px solid var(--br2);border-radius:var(--r);z-index:50;
+            box-shadow:0 8px 24px rgba(0,0,0,.4);"></div>
         </div>
       </div>
     </div>
@@ -710,17 +717,69 @@ def pg_conferente():
 
 <script>
 var resumo=[],totalVols=0;
-var endStatus={};  // cache: codigo -> status
+var endStatus={};      // cache: codigo -> status
+var endLista=[];       // lista de códigos de endereço (ordenada)
 
 // Carrega status de todos os endereços ao iniciar
 async function carregarStatusEnderecos(){
   try{
     var r=await fetch('/enderecos-status');
     var d=await r.json();
-    d.forEach(function(e){endStatus[e.codigo]=e.status;});
+    endLista=[];
+    d.forEach(function(e){endStatus[e.codigo]=e.status;endLista.push(e.codigo);});
   }catch(e){}
 }
 carregarStatusEnderecos();
+
+function corDot(st){
+  if(st==='LIVRE')return'var(--green)';
+  if(st==='PARCIAL')return'var(--amber)';
+  if(st==='OCUPADO')return'var(--red)';
+  return'var(--txt3)';
+}
+function labelStatus(st){
+  if(st==='LIVRE')return'Livre';
+  if(st==='PARCIAL')return'Parcial';
+  if(st==='OCUPADO')return'Ocupado';
+  return'—';
+}
+
+function renderDropdown(filtro){
+  var dd=document.getElementById('end-dropdown');
+  var f=(filtro||'').trim().toUpperCase();
+  var itens=endLista.filter(function(cod){
+    return !f || cod.toUpperCase().indexOf(f)!==-1;
+  });
+  if(!itens.length){
+    dd.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--txt3);">Nenhum endereço encontrado.</div>';
+    dd.style.display='block';
+    return;
+  }
+  dd.innerHTML=itens.map(function(cod){
+    var st=endStatus[cod]||'LIVRE';
+    return '<div class="dd-item" data-cod="'+cod+'" '+
+      'style="display:flex;align-items:center;gap:8px;padding:9px 12px;'+
+      'cursor:pointer;font-family:var(--mono);font-size:13px;color:var(--txt);'+
+      'border-bottom:1px solid var(--br);transition:.1s;" '+
+      'onmouseover="this.style.background=\\'var(--s2)\\'" '+
+      'onmouseout="this.style.background=\\'transparent\\'" '+
+      'onclick="selecionarEndereco(\\''+cod+'\\')">'+
+      '<span style="width:8px;height:8px;border-radius:50%;background:'+corDot(st)+';flex-shrink:0;"></span>'+
+      '<span style="flex:1;">'+cod+'</span>'+
+      '<span style="font-size:10px;color:'+corDot(st)+';">'+labelStatus(st)+'</span>'+
+      '</div>';
+  }).join('');
+  dd.style.display='block';
+}
+function abrirDropdown(){ renderDropdown(document.getElementById('endereco').value); }
+function filtrarDropdown(){ renderDropdown(document.getElementById('endereco').value); }
+function fecharDropdown(){ document.getElementById('end-dropdown').style.display='none'; }
+function selecionarEndereco(cod){
+  document.getElementById('endereco').value=cod;
+  fecharDropdown();
+  verificarEndereco();
+  upd();
+}
 
 function verificarEndereco(){
   var val=document.getElementById('endereco').value.trim().toUpperCase();
@@ -774,7 +833,7 @@ function renderOut(){
 ['palete','endereco','pedido','vol_ini','vol_fin'].forEach(function(id,i){
   var nx=['endereco','pedido','vol_ini','vol_fin','vol_tot'];
   document.getElementById(id).addEventListener('keydown',function(e){
-    if(e.key==='Enter'){e.preventDefault();document.getElementById(nx[i]).focus();}
+    if(e.key==='Enter'){e.preventDefault();fecharDropdown();document.getElementById(nx[i]).focus();}
   });
 });
 document.getElementById('vol_tot').addEventListener('keydown',function(e){
@@ -837,6 +896,7 @@ function resetar(){
   document.getElementById('out').textContent='Pedidos adicionados aparecerão aqui...';
   document.getElementById('end-badge').style.display='none';
   document.getElementById('end-info').textContent='';
+  fecharDropdown();
   document.getElementById('btnAdd').disabled=false;document.getElementById('btnFin').disabled=false;
   ss('Pronto para novo palete.','info');upd();document.getElementById('palete').focus();
 }
@@ -1079,13 +1139,47 @@ carregar();
 
 
 # ══════════════════════════════════════════════════════════════════
-#  PÁGINA: HISTÓRICO
+#  PÁGINA: HISTÓRICO — com painel de filtros e exportação Excel
 # ══════════════════════════════════════════════════════════════════
 @app.get("/historico", response_class=HTMLResponse)
 def pg_historico():
     return """<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED + """
-<title>WMS · Histórico</title></head><body>
+<title>WMS · Histórico</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/SheetJS/0.18.5/xlsx.full.min.js"></script>
+</head><body>
 """ + nav("hist") + """
+<div class="modal-bg" id="filtroModalBg">
+  <div class="modal" style="max-width:480px;">
+    <h3>🔧 Filtros do Histórico</h3>
+    <div class="f"><label>Ação</label>
+      <select id="m-filtroAcao" style="width:100%;padding:11px 13px;background:var(--bg);
+        color:var(--txt);border:1px solid var(--br);border-radius:var(--r);
+        font-family:var(--mono);font-size:14px;outline:none;">
+        <option value="">Todas as ações</option>
+        <option value="CADASTRO">Cadastros</option>
+        <option value="EXCLUSAO">Exclusões</option>
+        <option value="TRANSFERENCIA">Transferências</option>
+        <option value="STATUS_END">Status endereço</option>
+      </select>
+    </div>
+    <div class="f"><label>Buscar (pedido, usuário, endereço...)</label>
+      <input class="fi" id="m-filtroTxt" placeholder="Digite para filtrar...">
+    </div>
+    <div class="brow" style="margin-top:6px;">
+      <button class="btn bg" onclick="aplicarFiltrosModal()">✓ Aplicar Filtros</button>
+      <button class="btn bgh" onclick="limparFiltrosModal()">↺ Limpar</button>
+    </div>
+    <div class="divider"></div>
+    <button class="btn bb bfull" onclick="exportarExcel()">⬇ Baixar Relatório (Excel)</button>
+    <div style="font-size:11px;color:var(--txt3);margin-top:8px;text-align:center;">
+      O relatório respeita os filtros aplicados acima.
+    </div>
+    <div class="brow" style="margin-top:14px;">
+      <button class="btn bgh bfull" onclick="fecharFiltroModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <div class="pw">
   <div style="display:flex;align-items:center;justify-content:space-between;
     flex-wrap:wrap;gap:10px;margin-bottom:18px;">
@@ -1095,22 +1189,15 @@ def pg_historico():
     </div>
     <div class="brow" style="flex-wrap:wrap;gap:8px;">
       <button class="btn bgh" onclick="carregar()">↺ Atualizar</button>
-      <select id="filtroAcao" onchange="filtrar()"
-        style="padding:7px 11px;background:var(--s1);color:var(--txt);
-          border:1px solid var(--br);border-radius:var(--r);font-size:12px;outline:none;">
-        <option value="">Todas as ações</option>
-        <option value="CADASTRO">Cadastros</option>
-        <option value="EXCLUSAO">Exclusões</option>
-        <option value="TRANSFERENCIA">Transferências</option>
-        <option value="STATUS_END">Status endereço</option>
-      </select>
-      <input type="text" id="filtroTxt" placeholder="Pedido, usuário, endereço..."
-        style="padding:7px 11px;background:var(--s1);color:var(--txt);
-          border:1px solid var(--br);border-radius:var(--r);font-size:12px;
-          outline:none;min-width:200px;" oninput="filtrar()">
-      <span id="info" style="font-size:12px;color:var(--txt3);white-space:nowrap;">—</span>
+      <button class="btn ba" id="btnFiltroIcon" onclick="abrirFiltroModal()" title="Filtros e exportação">
+        🔧 Filtros / Exportar
+      </button>
+      <span id="info" style="font-size:12px;color:var(--txt3);white-space:nowrap;align-self:center;">—</span>
     </div>
   </div>
+  <div id="filtroAtivoTag" style="display:none;margin-bottom:12px;font-size:11px;
+    color:var(--atxt);background:var(--adim);border:1px solid var(--amber);
+    border-radius:var(--r);padding:6px 12px;"></div>
   <div class="tw">
     <table>
       <thead><tr>
@@ -1123,6 +1210,9 @@ def pg_historico():
 </div>
 <script>
 var dados=[];
+var filtroAcao='';
+var filtroTxt='';
+
 async function carregar(){
   document.getElementById('tbody').innerHTML='<tr><td colspan="9" style="color:var(--txt3);text-align:center;padding:20px;">Carregando...</td></tr>';
   try{
@@ -1131,14 +1221,20 @@ async function carregar(){
     dados=await r.json();filtrar();
   }catch(e){document.getElementById('tbody').innerHTML='<tr><td colspan="9" style="color:var(--rtxt);text-align:center;padding:20px;">Erro ao carregar.</td></tr>';}
 }
-function filtrar(){
-  var ac=document.getElementById('filtroAcao').value;
-  var q=document.getElementById('filtroTxt').value.trim().toLowerCase();
-  var fd=dados.filter(d=>{
-    if(ac&&d.acao!==ac)return false;
-    if(q){var s=(d.numero_pedido+d.usuario_nome+d.palete_codigo+d.endereco_de+d.endereco_para+d.detalhe_extra).toLowerCase();if(!s.includes(q))return false;}
+
+function getFiltrados(){
+  return dados.filter(d=>{
+    if(filtroAcao&&d.acao!==filtroAcao)return false;
+    if(filtroTxt){
+      var s=(d.numero_pedido+d.usuario_nome+d.palete_codigo+d.endereco_de+d.endereco_para+d.detalhe_extra).toLowerCase();
+      if(!s.includes(filtroTxt.toLowerCase()))return false;
+    }
     return true;
   });
+}
+
+function filtrar(){
+  var fd=getFiltrados();
   var tb=document.getElementById('tbody');
   if(!fd.length){tb.innerHTML='<tr><td colspan="9" style="color:var(--txt3);text-align:center;padding:20px;">Nenhum registro.</td></tr>';
     document.getElementById('info').textContent='0 registros';return;}
@@ -1158,6 +1254,80 @@ function filtrar(){
     </tr>`;
   }).join('');
   document.getElementById('info').textContent=fd.length+' registro(s)';
+}
+
+function abrirFiltroModal(){
+  document.getElementById('m-filtroAcao').value=filtroAcao;
+  document.getElementById('m-filtroTxt').value=filtroTxt;
+  document.getElementById('filtroModalBg').classList.add('open');
+}
+function fecharFiltroModal(){
+  document.getElementById('filtroModalBg').classList.remove('open');
+}
+function aplicarFiltrosModal(){
+  filtroAcao=document.getElementById('m-filtroAcao').value;
+  filtroTxt=document.getElementById('m-filtroTxt').value.trim();
+  filtrar();
+  atualizarTagFiltro();
+  fecharFiltroModal();
+  toast('Filtros aplicados.');
+}
+function limparFiltrosModal(){
+  document.getElementById('m-filtroAcao').value='';
+  document.getElementById('m-filtroTxt').value='';
+  filtroAcao='';filtroTxt='';
+  filtrar();
+  atualizarTagFiltro();
+  toast('Filtros limpos.');
+}
+function atualizarTagFiltro(){
+  var tag=document.getElementById('filtroAtivoTag');
+  var partes=[];
+  if(filtroAcao)partes.push('Ação: '+filtroAcao);
+  if(filtroTxt)partes.push('Busca: "'+filtroTxt+'"');
+  if(partes.length){
+    tag.style.display='block';
+    tag.textContent='🔧 Filtro ativo — '+partes.join('  ·  ');
+  }else{
+    tag.style.display='none';
+  }
+}
+
+function exportarExcel(){
+  filtroAcao=document.getElementById('m-filtroAcao').value;
+  filtroTxt=document.getElementById('m-filtroTxt').value.trim();
+  var fd=getFiltrados();
+  if(!fd.length){toast('Nenhum registro para exportar com esse filtro.','err');return;}
+
+  var linhas=fd.map(function(d){
+    var vol=d.volume_atual!=null?String(d.volume_atual).padStart(3,'0')+'/'+String(d.volume_total).padStart(3,'0'):'—';
+    return {
+      'Data/Hora': d.criado_em,
+      'Usuário': d.usuario_nome,
+      'Ação': d.acao,
+      'Pedido': d.numero_pedido,
+      'Volume': vol,
+      'Palete': d.palete_codigo,
+      'Endereço De': d.endereco_de,
+      'Endereço Para': d.endereco_para,
+      'Detalhe': d.detalhe_extra
+    };
+  });
+
+  var ws=XLSX.utils.json_to_sheet(linhas);
+  ws['!cols']=[{wch:18},{wch:18},{wch:14},{wch:12},{wch:10},{wch:10},{wch:14},{wch:14},{wch:30}];
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Historico');
+
+  var agora=new Date();
+  var dataStr=agora.toLocaleDateString('pt-BR').replace(/\//g,'-');
+  var horaStr=agora.toLocaleTimeString('pt-BR').replace(/:/g,'-');
+  var nomeArquivo='historico_tcruzloc_'+dataStr+'_'+horaStr+'.xlsx';
+
+  XLSX.writeFile(wb,nomeArquivo);
+  filtrar();
+  atualizarTagFiltro();
+  toast('✓ Relatório baixado: '+fd.length+' registro(s)');
 }
 carregar();
 </script></body></html>"""
@@ -1299,7 +1469,6 @@ async function setStatus(codigo, status){
       body:JSON.stringify({status_ocupacao:status})});
     var d=await r.json();
     if(d.detail){toast(d.detail,'err');return;}
-    // Atualiza localmente sem recarregar tudo
     var idx=enderecos.findIndex(e=>e.codigo===codigo);
     if(idx>=0)enderecos[idx].status_ocupacao=status;
     renderGrid();atualizarContadores();
