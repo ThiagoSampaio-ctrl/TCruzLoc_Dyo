@@ -667,7 +667,7 @@ def pg_conferente():
             autocomplete="off"
             oninput="filtrarDropdown();verificarEndereco()"
             onfocus="abrirDropdown()"
-            onblur="setTimeout(fecharDropdown,150);verificarEndereco()">
+            onblur="fecharDropdown();verificarEndereco()">
           <span id="end-badge" style="position:absolute;right:10px;top:50%;
             transform:translateY(-50%);font-size:10px;padding:2px 7px;
             border-radius:4px;font-family:var(--mono);font-weight:600;display:none;"></span>
@@ -750,25 +750,54 @@ function renderDropdown(filtro){
   var itens=endLista.filter(function(cod){
     return !f || cod.toUpperCase().indexOf(f)!==-1;
   });
+  dd.innerHTML='';
   if(!itens.length){
-    dd.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--txt3);">Nenhum endereço encontrado.</div>';
+    var vazio=document.createElement('div');
+    vazio.style.padding='10px 12px';
+    vazio.style.fontSize='12px';
+    vazio.style.color='var(--txt3)';
+    vazio.textContent='Nenhum endereço encontrado.';
+    dd.appendChild(vazio);
     dd.style.display='block';
     return;
   }
-  dd.innerHTML=itens.map(function(cod){
+  itens.forEach(function(cod){
     var st=endStatus[cod]||'LIVRE';
-    return '<div class="dd-item" data-cod="'+cod+'" '+
-      'style="display:flex;align-items:center;gap:8px;padding:9px 12px;'+
-      'cursor:pointer;font-family:var(--mono);font-size:13px;color:var(--txt);'+
-      'border-bottom:1px solid var(--br);transition:.1s;" '+
-      'onmouseover="this.style.background=\\'var(--s2)\\'" '+
-      'onmouseout="this.style.background=\\'transparent\\'" '+
-      'onclick="selecionarEndereco(\\''+cod+'\\')">'+
-      '<span style="width:8px;height:8px;border-radius:50%;background:'+corDot(st)+';flex-shrink:0;"></span>'+
-      '<span style="flex:1;">'+cod+'</span>'+
-      '<span style="font-size:10px;color:'+corDot(st)+';">'+labelStatus(st)+'</span>'+
-      '</div>';
-  }).join('');
+    var item=document.createElement('div');
+    item.className='dd-item';
+    item.style.display='flex';
+    item.style.alignItems='center';
+    item.style.gap='8px';
+    item.style.padding='9px 12px';
+    item.style.cursor='pointer';
+    item.style.fontFamily='var(--mono)';
+    item.style.fontSize='13px';
+    item.style.color='var(--txt)';
+    item.style.borderBottom='1px solid var(--br)';
+    item.style.transition='.1s';
+
+    var dot=document.createElement('span');
+    dot.style.width='8px';dot.style.height='8px';dot.style.borderRadius='50%';
+    dot.style.background=corDot(st);dot.style.flexShrink='0';
+
+    var nome=document.createElement('span');
+    nome.style.flex='1';nome.textContent=cod;
+
+    var label=document.createElement('span');
+    label.style.fontSize='10px';label.style.color=corDot(st);
+    label.textContent=labelStatus(st);
+
+    item.appendChild(dot);item.appendChild(nome);item.appendChild(label);
+
+    item.addEventListener('mouseover',function(){item.style.background='var(--s2)';});
+    item.addEventListener('mouseout',function(){item.style.background='transparent';});
+    item.addEventListener('mousedown',function(e){
+      e.preventDefault();
+      selecionarEndereco(cod);
+    });
+
+    dd.appendChild(item);
+  });
   dd.style.display='block';
 }
 function abrirDropdown(){ renderDropdown(document.getElementById('endereco').value); }
@@ -1314,20 +1343,53 @@ function exportarExcel(){
     };
   });
 
-  var ws=XLSX.utils.json_to_sheet(linhas);
-  ws['!cols']=[{wch:18},{wch:18},{wch:14},{wch:12},{wch:10},{wch:10},{wch:14},{wch:14},{wch:30}];
-  var wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,'Historico');
-
   var agora=new Date();
   var dataStr=agora.toLocaleDateString('pt-BR').replace(/\//g,'-');
   var horaStr=agora.toLocaleTimeString('pt-BR').replace(/:/g,'-');
-  var nomeArquivo='historico_tcruzloc_'+dataStr+'_'+horaStr+'.xlsx';
 
-  XLSX.writeFile(wb,nomeArquivo);
+  if(typeof XLSX==='undefined'){
+    // CDN não carregou — usa fallback CSV (abre no Excel também)
+    exportarCSVFallback(linhas,dataStr,horaStr);
+    return;
+  }
+
+  try{
+    var ws=XLSX.utils.json_to_sheet(linhas);
+    ws['!cols']=[{wch:18},{wch:18},{wch:14},{wch:12},{wch:10},{wch:10},{wch:14},{wch:14},{wch:30}];
+    var wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'Historico');
+    var nomeArquivo='historico_tcruzloc_'+dataStr+'_'+horaStr+'.xlsx';
+    XLSX.writeFile(wb,nomeArquivo);
+    filtrar();
+    atualizarTagFiltro();
+    toast('✓ Relatório baixado: '+fd.length+' registro(s)');
+  }catch(e){
+    exportarCSVFallback(linhas,dataStr,horaStr);
+  }
+}
+
+function exportarCSVFallback(linhas,dataStr,horaStr){
+  var cabecalho=Object.keys(linhas[0]);
+  var csvRows=[cabecalho.join(';')];
+  linhas.forEach(function(l){
+    csvRows.push(cabecalho.map(function(c){
+      var v=(l[c]==null?'':String(l[c])).replace(/;/g,',');
+      return v;
+    }).join(';'));
+  });
+  var csv='\ufeff'+csvRows.join('\n'); // BOM para acentos abrirem certo no Excel
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  a.download='historico_tcruzloc_'+dataStr+'_'+horaStr+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
   filtrar();
   atualizarTagFiltro();
-  toast('✓ Relatório baixado: '+fd.length+' registro(s)');
+  toast('✓ Relatório baixado em CSV (Excel indisponível): '+linhas.length+' registro(s)','ok');
 }
 carregar();
 </script></body></html>"""
