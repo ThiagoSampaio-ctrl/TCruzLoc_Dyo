@@ -1172,7 +1172,7 @@ carregar();
 # ══════════════════════════════════════════════════════════════════
 @app.get("/historico", response_class=HTMLResponse)
 def pg_historico():
-    return """<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED + """
+   return r"""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED + r"""
 <title>WMS · Histórico</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/SheetJS/0.18.5/xlsx.full.min.js"></script>
 </head><body>
