@@ -1172,11 +1172,11 @@ carregar();
 # ══════════════════════════════════════════════════════════════════
 @app.get("/historico", response_class=HTMLResponse)
 def pg_historico():
-   return r"""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED + r"""
+    return r"""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED + r"""
 <title>WMS · Histórico</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/SheetJS/0.18.5/xlsx.full.min.js"></script>
 </head><body>
-""" + nav("hist") + """
+""" + nav("hist") + r"""
 <div class="modal-bg" id="filtroModalBg">
   <div class="modal" style="max-width:480px;">
     <h3>🔧 Filtros do Histórico</h3>
