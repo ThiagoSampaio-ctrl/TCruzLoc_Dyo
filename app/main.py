@@ -2012,10 +2012,18 @@ def migrar_banco(db: Session = Depends(get_db)):
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS foto_url VARCHAR",
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS criado_em TIMESTAMP DEFAULT now()",
     ]
+
+    erros = []
+
     for c in comandos:
         try:
             db.execute(text(c))
-        except Exception:
-            pass
+        except Exception as e:
+            erros.append(str(e))
+
     db.commit()
-    return {"status": "ok", "mensagem": "Banco atualizado com colunas de papel/perfil/CPF/foto."}
+
+    return {
+        "status": "ok",
+        "erros": erros
+    }
