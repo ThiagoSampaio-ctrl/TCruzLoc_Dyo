@@ -15,21 +15,21 @@ class EnderecoResposta(BaseModel):
     altura_cm: int
     capacidade_total: int
     capacidade_usada: int
-    status_ocupacao: str = "LIVRE"   # ← campo obrigatório para as cores
+    status_ocupacao: str = "LIVRE"
 
     class Config:
         from_attributes = True
 
 
 class EnderecoStatusUpdate(BaseModel):
-    status_ocupacao: str             # ← CORRIGIDO: era "status", deve ser "status_ocupacao"
+    status_ocupacao: str
 
     @field_validator("status_ocupacao")
     @classmethod
     def validar(cls, v: str) -> str:
         v = v.strip().upper()
-        if v not in ("LIVRE", "PARCIAL", "OCUPADO"):
-            raise ValueError("Status deve ser LIVRE, PARCIAL ou OCUPADO")
+        if v not in ("LIVRE", "PARCIAL", "OCUPADO", "BLOQUEADO"):
+            raise ValueError("Status deve ser LIVRE, PARCIAL, OCUPADO ou BLOQUEADO")
         return v
 
 
@@ -123,12 +123,25 @@ class LoginResposta(BaseModel):
     token: str
     nome: str
     login: str
+    papel: str = "OPERADOR"
 
 
 class UsuarioCriar(BaseModel):
     nome: str
     login: str
     senha: str
+    papel: str = "OPERADOR"
+    email: Optional[str] = None
+    telefone: Optional[str] = None
+    cpf: Optional[str] = None
+
+    @field_validator("papel")
+    @classmethod
+    def valida_papel(cls, v):
+        v = (v or "OPERADOR").strip().upper()
+        if v not in ("ADMIN", "OPERADOR"):
+            raise ValueError("Papel deve ser ADMIN ou OPERADOR")
+        return v
 
 
 class UsuarioResposta(BaseModel):
@@ -136,9 +149,49 @@ class UsuarioResposta(BaseModel):
     nome: str
     login: str
     ativo: int
+    papel: str = "OPERADOR"
 
     class Config:
         from_attributes = True
+
+
+class PerfilResposta(BaseModel):
+    """Perfil completo — CPF vem mascarado, exceto quando o próprio dono pede ver."""
+    id: int
+    nome: str
+    login: str
+    papel: str
+    email: Optional[str] = None
+    telefone: Optional[str] = None
+    cpf_mascarado: Optional[str] = None
+    foto_url: Optional[str] = None
+    ativo: int
+
+
+class PerfilAtualizar(BaseModel):
+    """Campos que o próprio usuário pode editar no seu perfil."""
+    nome: Optional[str] = None
+    email: Optional[str] = None
+    telefone: Optional[str] = None
+    cpf: Optional[str] = None
+    foto_url: Optional[str] = None
+
+    @field_validator("email")
+    @classmethod
+    def valida_email(cls, v):
+        if v and "@" not in v:
+            raise ValueError("E-mail inválido")
+        return v
+
+    @field_validator("cpf")
+    @classmethod
+    def valida_cpf(cls, v):
+        if v:
+            digitos = "".join(c for c in v if c.isdigit())
+            if len(digitos) != 11:
+                raise ValueError("CPF deve ter 11 dígitos")
+            return digitos
+        return v
 
 
 # ─── Histórico ───────────────────────────────────────────────────────
