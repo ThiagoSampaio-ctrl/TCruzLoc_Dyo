@@ -10,11 +10,28 @@ def hash_senha(senha: str) -> str:
     return hashlib.sha256(senha.encode()).hexdigest()
 
 
-def criar_usuario(db: Session, nome: str, login: str, senha: str) -> models.Usuario:
+def mascarar_cpf(cpf: str | None) -> str:
+    """Mostra apenas os 3 primeiros e os 2 últimos dígitos: 123.***.**-45"""
+    if not cpf:
+        return ""
+    digitos = "".join(c for c in cpf if c.isdigit())
+    if len(digitos) != 11:
+        return cpf
+    return f"{digitos[:3]}.***.**-{digitos[9:]}"
+
+
+def criar_usuario(db: Session, nome: str, login: str, senha: str,
+                  papel: str = "OPERADOR", email: str | None = None,
+                  telefone: str | None = None, cpf: str | None = None,
+                  foto_url: str | None = None) -> models.Usuario:
     login = login.strip().lower()
     if db.query(models.Usuario).filter(models.Usuario.login == login).first():
         raise HTTPException(status_code=400, detail="Login já existe")
-    u = models.Usuario(nome=nome, login=login, senha_hash=hash_senha(senha))
+    u = models.Usuario(
+        nome=nome, login=login, senha_hash=hash_senha(senha),
+        papel=papel.strip().upper() if papel else "OPERADOR",
+        email=email, telefone=telefone, cpf=cpf, foto_url=foto_url,
+    )
     db.add(u)
     db.commit()
     db.refresh(u)
@@ -32,7 +49,10 @@ def fazer_login(db: Session, login: str, senha: str) -> dict:
     expira = datetime.now(timezone.utc) + timedelta(hours=12)
     db.add(models.Sessao(token=token, usuario_id=u.id, expira_em=expira))
     db.commit()
-    return {"token": token, "nome": u.nome, "login": u.login}
+    return {
+        "token": token, "nome": u.nome, "login": u.login,
+        "papel": u.papel or "OPERADOR",
+    }
 
 
 def get_usuario_atual(db: Session, authorization: str = "") -> models.Usuario:
@@ -52,11 +72,11 @@ def get_usuario_atual(db: Session, authorization: str = "") -> models.Usuario:
     return u
 
 
+def exigir_admin(usuario: models.Usuario):
+    if (usuario.papel or "OPERADOR").upper() != "ADMIN":
+        raise HTTPException(status_code=403, detail="Apenas administradores podem fazer isso")
+
+
 def registrar(db: Session, acao: str, usuario: models.Usuario, **kwargs):
-    """Grava linha no histórico — sem commit (quem chama faz o commit)."""
-    db.add(models.Historico(
-        acao=acao,
-        usuario_id=usuario.id,
-        usuario_nome=usuario.nome,
-        **kwargs
-    ))
+    db.add(models.Historico(acao=acao, usuario_id=usuario.id,
+                            usuario_nome=usuario.nome, **kwargs))

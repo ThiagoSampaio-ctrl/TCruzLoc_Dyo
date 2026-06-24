@@ -6,13 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.database import engine, Base, get_db, ping_db
 from app import models, schema, crud
-from app.auth import criar_usuario, fazer_login, get_usuario_atual
+from app.auth import criar_usuario, fazer_login, get_usuario_atual, exigir_admin
 
 Base.metadata.create_all(bind=engine)
-app = FastAPI(title="WMS — TCruzLoc", version="3.0")
+app = FastAPI(title="WMS — TCruzLoc", version="4.0")
 
 
-# ── Ícones PWA ──────────────────────────────────────────────────────
 def _load_icon(name):
     try:
         p = _os.path.join(_os.path.dirname(__file__), '..', 'pwa', name)
@@ -30,7 +29,7 @@ _ICON_512 = _load_icon('icon-512.png')
 _MANIFEST = {
     "name": "WMS TCruzLoc", "short_name": "TCruzLoc",
     "description": "Sistema WMS", "start_url": "/app",
-    "display": "standalone", "background_color": "#09090b",
+    "display": "standalone", "background_color": "#0a0e14",
     "theme_color": "#22c55e", "orientation": "portrait-primary",
     "scope": "/", "lang": "pt-BR",
     "icons": [
@@ -46,16 +45,16 @@ _MANIFEST = {
     ]
 }
 
-_SW = ("const CACHE='wms-v3';"
+_SW = ("const CACHE='wms-v4';"
        "const PAGES=['/app','/login','/operacao','/conferente-v2',"
-       "'/gerenciar-volumes','/historico','/enderecos-page','/manifest.json'];"
+       "'/gerenciar-volumes','/historico','/enderecos-page','/perfil','/manifest.json'];"
        "self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE)"
        ".then(c=>c.addAll(PAGES)).then(()=>self.skipWaiting()));});"
        "self.addEventListener('activate',e=>{e.waitUntil(caches.keys()"
        ".then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))"
        ".then(()=>self.clients.claim()));});"
        "self.addEventListener('fetch',e=>{"
-       "const isApi=['/pedidos','/paletes','/enderecos','/pedidos-volume','/auth','/historico-api']"
+       "const isApi=['/pedidos','/paletes','/enderecos','/pedidos-volume','/auth','/historico-api','/usuarios','/dashboard-api']"
        ".some(p=>e.request.url.includes(p));"
        "if(isApi){e.respondWith(fetch(e.request).catch(()=>new Response("
        "JSON.stringify({detail:'Sem conexão.'}),{status:503,"
@@ -64,7 +63,7 @@ _SW = ("const CACHE='wms-v3';"
        "const c=r.clone();caches.open(CACHE).then(ch=>ch.put(e.request,c));}return r;})"
        ".catch(()=>caches.match(e.request)));});")
 
-# ── Design System compartilhado ─────────────────────────────────────
+# ── Design System: Sidebar dark, cards de status, mapa de armazém ──
 _SHARED = """
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="manifest" href="/manifest.json">
@@ -74,86 +73,109 @@ _SHARED = """
 <meta name="apple-mobile-web-app-title" content="TCruzLoc">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>
 if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("/service-worker.js"));
 function getToken(){return localStorage.getItem('wms_token')||'';}
 function getUser(){return localStorage.getItem('wms_user')||'';}
+function getPapel(){return localStorage.getItem('wms_papel')||'OPERADOR';}
+function isAdmin(){return getPapel()==='ADMIN';}
 function authHeaders(){return{'Content-Type':'application/json','Authorization':'Bearer '+getToken()};}
 </script>
 <style>
 :root{
-  --bg:#09090b;--s1:#111113;--s2:#18181b;--s3:#27272a;
-  --br:#27272a;--br2:#3f3f46;
-  --green:#22c55e;--gdim:#22c55e18;--gtxt:#4ade80;
-  --blue:#3b82f6;--bdim:#3b82f618;--btxt:#60a5fa;
-  --red:#ef4444;--rdim:#ef444418;--rtxt:#f87171;
-  --amber:#f59e0b;--adim:#f59e0b18;--atxt:#fbbf24;
-  --purple:#a855f7;--pdim:#a855f718;--ptxt:#c084fc;
-  --txt:#fafafa;--txt2:#a1a1aa;--txt3:#71717a;
-  --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
-  --r:8px;--rl:12px;
+  --bg:#0a0e14;--s1:#0f1420;--s2:#161b28;--s3:#1d2333;
+  --br:#222838;--br2:#323a4f;
+  --green:#22c55e;--gdim:#22c55e1c;--gtxt:#4ade80;
+  --blue:#3b82f6;--bdim:#3b82f61c;--btxt:#60a5fa;
+  --red:#ef4444;--rdim:#ef44441c;--rtxt:#f87171;
+  --amber:#f59e0b;--adim:#f59e0b1c;--atxt:#fbbf24;
+  --purple:#a855f7;--pdim:#a855f71c;--ptxt:#c084fc;
+  --txt:#f4f6fb;--txt2:#9aa3b8;--txt3:#5b6478;
+  --font:'Inter',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --r:8px;--rl:12px;--sbw:230px;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{background:var(--bg);color:var(--txt);font-family:var(--font);min-height:100vh;}
 a{color:inherit;text-decoration:none;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:var(--br2);border-radius:4px;}
 
-/* NAV */
-nav{display:flex;align-items:center;background:var(--s1);border-bottom:1px solid var(--br);
-  padding:0 18px;height:52px;position:sticky;top:0;z-index:100;}
-.nb{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--gtxt);
-  margin-right:24px;display:flex;align-items:center;gap:7px;flex-shrink:0;}
-.nb::before{content:'';width:7px;height:7px;background:var(--green);border-radius:50%;}
-.nl{display:flex;gap:1px;flex:1;overflow-x:auto;scrollbar-width:none;}
-.nl::-webkit-scrollbar{display:none;}
-.na{padding:5px 11px;border-radius:6px;font-size:12px;color:var(--txt3);
-  transition:.12s;cursor:pointer;border:1px solid transparent;white-space:nowrap;}
-.na:hover{color:var(--txt);background:var(--s2);}
-.na.on{color:var(--gtxt);background:var(--gdim);border-color:var(--gdim);}
-.nr{display:flex;align-items:center;gap:10px;margin-left:auto;flex-shrink:0;}
-.av{width:28px;height:28px;border-radius:50%;background:var(--bdim);
+/* ── SIDEBAR ── */
+.shell{display:flex;min-height:100vh;}
+.sidebar{width:var(--sbw);background:var(--s1);border-right:1px solid var(--br);
+  display:flex;flex-direction:column;flex-shrink:0;position:sticky;top:0;height:100vh;
+  overflow-y:auto;z-index:50;}
+.sb-brand{display:flex;align-items:center;gap:10px;padding:18px 18px 16px;}
+.sb-logo{width:30px;height:30px;border-radius:8px;background:var(--green);
+  display:flex;align-items:center;justify-content:center;font-weight:700;
+  font-size:15px;color:#04130a;flex-shrink:0;font-family:var(--mono);}
+.sb-name{font-size:14px;font-weight:600;color:var(--txt);}
+.sb-nav{flex:1;padding:6px 12px;display:flex;flex-direction:column;gap:2px;}
+.sb-link{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:8px;
+  font-size:13px;color:var(--txt2);cursor:pointer;transition:.12s;font-weight:500;}
+.sb-link .ic{width:17px;text-align:center;font-size:14px;flex-shrink:0;}
+.sb-link:hover{color:var(--txt);background:var(--s2);}
+.sb-link.on{color:var(--gtxt);background:var(--gdim);}
+.sb-foot{padding:14px 16px;border-top:1px solid var(--br);}
+.sb-logout{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--txt3);
+  cursor:pointer;padding:7px 4px;transition:.12s;}
+.sb-logout:hover{color:var(--rtxt);}
+
+/* ── TOP BAR ── */
+.main{flex:1;min-width:0;display:flex;flex-direction:column;}
+.topbar{display:flex;align-items:center;justify-content:space-between;
+  padding:16px 24px;border-bottom:1px solid var(--br);background:var(--bg);
+  position:sticky;top:0;z-index:40;}
+.tb-title{display:flex;align-items:center;gap:11px;}
+.tb-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;
+  justify-content:center;font-size:16px;flex-shrink:0;}
+.tb-h1{font-size:16px;font-weight:600;color:var(--txt);}
+.tb-sub{font-size:11.5px;color:var(--txt3);margin-top:1px;}
+.tb-right{display:flex;align-items:center;gap:14px;}
+.tb-user{display:flex;align-items:center;gap:9px;cursor:pointer;}
+.tb-av{width:30px;height:30px;border-radius:50%;background:var(--bdim);
   border:1px solid var(--blue);display:flex;align-items:center;justify-content:center;
-  font-size:10px;font-weight:600;color:var(--btxt);flex-shrink:0;}
-.nu{font-size:12px;color:var(--txt3);font-family:var(--mono);
-  max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.nc{font-family:var(--mono);font-size:11px;color:var(--txt3);}
+  font-size:10px;font-weight:600;color:var(--btxt);flex-shrink:0;overflow:hidden;}
+.tb-av img{width:100%;height:100%;object-fit:cover;}
+.tb-uname{font-size:12.5px;font-weight:600;color:var(--txt);}
+.tb-urole{font-size:10px;color:var(--txt3);}
 
-/* LAYOUT */
-.page{max-width:920px;margin:0 auto;padding:26px 16px;}
-.pw{max-width:1200px;margin:0 auto;padding:26px 16px;}
+.content{padding:22px 24px;flex:1;}
 
-/* CARD */
+/* ── CARD ── */
 .card{background:var(--s1);border:1px solid var(--br);border-radius:var(--rl);
   padding:20px;margin-bottom:14px;}
 .ct{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--txt3);margin-bottom:12px;font-weight:500;}
+  color:var(--txt3);margin-bottom:12px;font-weight:600;}
 
-/* FORM */
+/* ── FORM ── */
 .f{margin-bottom:12px;}
-.f label{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--txt3);margin-bottom:6px;font-weight:500;}
-.fi{width:100%;padding:11px 13px;background:var(--bg);color:var(--gtxt);
+.f label{display:block;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--txt3);margin-bottom:6px;font-weight:600;}
+.fi{width:100%;padding:11px 13px;background:var(--bg);color:var(--txt);
   border:1px solid var(--br);border-radius:var(--r);
-  font-family:var(--mono);font-size:15px;transition:.12s;outline:none;}
+  font-family:var(--mono);font-size:14px;transition:.12s;outline:none;}
 .fi:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--gdim);}
 .fi::placeholder{color:var(--txt3);}
+.fi:disabled{opacity:.5;cursor:not-allowed;}
 .fi.ok{border-color:var(--green);}
 .fi.err{border-color:var(--red);}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
 
-/* BOTÕES */
+/* ── BOTÕES ── */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  padding:9px 17px;border:none;border-radius:var(--r);
-  font-family:var(--font);font-size:13px;font-weight:500;
+  padding:9px 16px;border:none;border-radius:var(--r);
+  font-family:var(--font);font-size:13px;font-weight:600;
   cursor:pointer;transition:.12s;white-space:nowrap;}
 .btn:disabled{opacity:.35;cursor:not-allowed;}
 .btn:active:not(:disabled){transform:scale(.97);}
-.bg{background:var(--green);color:#000;}
+.bg{background:var(--green);color:#04130a;}
 .bg:hover:not(:disabled){filter:brightness(1.1);}
 .bb{background:var(--blue);color:#fff;}
 .bb:hover:not(:disabled){filter:brightness(1.1);}
-.ba{background:var(--amber);color:#000;}
+.ba{background:var(--amber);color:#1a1200;}
 .ba:hover:not(:disabled){filter:brightness(1.1);}
 .bgh{background:var(--s2);color:var(--txt);border:1px solid var(--br);}
 .bgh:hover:not(:disabled){border-color:var(--br2);}
@@ -162,74 +184,65 @@ nav{display:flex;align-items:center;background:var(--s1);border-bottom:1px solid
 .brow{display:flex;gap:8px;flex-wrap:wrap;}
 .bfull{width:100%;}
 
-/* OUTPUT */
+/* ── OUTPUT ── */
 .term{background:var(--bg);border:1px solid var(--br);border-radius:var(--rl);
   padding:16px;font-family:var(--mono);font-size:13px;color:var(--gtxt);
   white-space:pre-wrap;min-height:90px;line-height:1.7;position:relative;}
 .term::before{content:'OUTPUT';position:absolute;top:7px;right:10px;
   font-size:9px;color:var(--txt3);letter-spacing:.1em;}
 
-/* STATUS BAR */
-.sb{min-height:24px;display:flex;align-items:center;gap:6px;
+.sb-status{min-height:24px;display:flex;align-items:center;gap:6px;
   font-size:12px;padding:3px 0;}
-.sb.ok{color:var(--gtxt);}.sb.err{color:var(--rtxt);}
-.sb.warn{color:var(--atxt);}.sb.info{color:var(--txt3);}
+.sb-status.ok{color:var(--gtxt);}.sb-status.err{color:var(--rtxt);}
+.sb-status.warn{color:var(--atxt);}.sb-status.info{color:var(--txt3);}
 .dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0;}
 
-/* CHIPS */
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 .chip{padding:3px 10px;background:var(--s2);border:1px solid var(--br);
   border-radius:20px;font-family:var(--mono);font-size:11px;color:var(--txt3);
   cursor:pointer;transition:.12s;}
 .chip:hover{border-color:var(--green);color:var(--gtxt);}
 
-/* SEARCH */
 .sw{position:relative;}
-.sw input{width:100%;padding:15px 15px 15px 42px;font-size:18px;
-  font-family:var(--mono);background:var(--s1);color:var(--gtxt);
+.sw input{width:100%;padding:14px 14px 14px 40px;font-size:16px;
+  font-family:var(--mono);background:var(--s1);color:var(--txt);
   border:1px solid var(--br);border-radius:var(--rl);outline:none;transition:.12s;}
 .sw input:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--gdim);}
 .sw .si{position:absolute;left:14px;top:50%;transform:translateY(-50%);
-  font-size:16px;color:var(--txt3);pointer-events:none;}
-.sw input.ok{border-color:var(--green);}
-.sw input.err{border-color:var(--red);}
+  font-size:15px;color:var(--txt3);pointer-events:none;}
 
-/* TABLE */
 .tw{overflow-x:auto;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
-th{text-align:left;padding:8px 10px;font-size:9px;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--txt3);border-bottom:1px solid var(--br);font-weight:500;}
-td{padding:8px 10px;border-bottom:1px solid var(--br);color:var(--txt);}
+th{text-align:left;padding:9px 10px;font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--txt3);border-bottom:1px solid var(--br);font-weight:600;}
+td{padding:9px 10px;border-bottom:1px solid var(--br);color:var(--txt);}
 tr:last-child td{border-bottom:none;}
 tr:hover td{background:var(--s2);}
 
-/* BADGES */
-.bk{display:inline-block;padding:2px 7px;border-radius:4px;
+.bk{display:inline-block;padding:3px 8px;border-radius:5px;
   font-family:var(--mono);font-size:10px;font-weight:600;}
 .bk-blue{background:var(--bdim);color:var(--btxt);}
 .bk-green{background:var(--gdim);color:var(--gtxt);}
 .bk-red{background:var(--rdim);color:var(--rtxt);}
 .bk-amber{background:var(--adim);color:var(--atxt);}
+.bk-purple{background:var(--pdim);color:var(--ptxt);}
 
-/* STATUS DE ENDEREÇO */
 .end-livre{background:var(--gdim);color:var(--gtxt);border:1px solid var(--green);}
 .end-parcial{background:var(--adim);color:var(--atxt);border:1px solid var(--amber);}
 .end-ocupado{background:var(--rdim);color:var(--rtxt);border:1px solid var(--red);}
+.end-bloqueado{background:var(--s2);color:var(--txt3);border:1px solid var(--br2);}
 
 input[type=checkbox]{width:14px;height:14px;accent-color:var(--green);cursor:pointer;}
 
-/* STATS */
 .stats{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;}
 .stat{flex:1;min-width:88px;background:var(--s1);border:1px solid var(--br);
   border-radius:var(--r);padding:11px 13px;}
-.sl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--txt3);margin-bottom:4px;}
+.sl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--txt3);margin-bottom:4px;}
 .sv{font-family:var(--mono);font-size:19px;font-weight:600;color:var(--gtxt);}
 .sv.red{color:var(--rtxt);}
 
-/* DIVIDER */
 .divider{height:1px;background:var(--br);margin:18px 0;}
 
-/* TOAST */
 #toast{position:fixed;bottom:18px;right:18px;background:var(--s1);
   border:1px solid var(--br);border-radius:var(--rl);padding:10px 14px;
   font-size:12px;z-index:999;transform:translateY(60px);opacity:0;
@@ -238,7 +251,6 @@ input[type=checkbox]{width:14px;height:14px;accent-color:var(--green);cursor:poi
 #toast.ok{border-color:var(--green);color:var(--gtxt);}
 #toast.err{border-color:var(--red);color:var(--rtxt);}
 
-/* MODAL */
 .modal-bg{display:none;position:fixed;inset:0;background:#000c;z-index:200;
   align-items:center;justify-content:center;}
 .modal-bg.open{display:flex;}
@@ -246,51 +258,127 @@ input[type=checkbox]{width:14px;height:14px;accent-color:var(--green);cursor:poi
   padding:24px;width:100%;max-width:440px;margin:16px;}
 .modal h3{font-size:15px;font-weight:600;color:var(--txt);margin-bottom:16px;}
 
-/* MÓDULOS (HOME) */
-.mod-card{background:var(--s1);border:1px solid var(--br);border-radius:var(--rl);
-  padding:18px;cursor:pointer;transition:.15s;}
-.mod-card:hover{border-color:var(--br2);background:var(--s2);}
-.mod-icon{width:34px;height:34px;border-radius:8px;display:flex;
-  align-items:center;justify-content:center;margin-bottom:11px;font-size:17px;}
-.mod-title{font-size:13px;font-weight:600;margin-bottom:4px;}
-.mod-desc{font-size:11px;color:var(--txt3);margin-bottom:12px;line-height:1.5;}
-.mod-cta{font-size:10px;font-family:var(--mono);}
+/* ── DASHBOARD: cards de métrica com ícone de tendência ── */
+.metric-card{background:var(--s1);border:1px solid var(--br);border-radius:var(--rl);
+  padding:16px 18px;display:flex;align-items:center;justify-content:space-between;}
+.metric-card .num{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1;}
+.metric-card .lbl{font-size:11.5px;color:var(--txt2);margin-top:4px;font-weight:500;}
+.metric-card .trend{font-size:17px;}
 
-/* METRIC */
-.metric{background:var(--s1);border:1px solid var(--br);border-radius:var(--r);padding:12px 14px;}
-.ml{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--txt3);margin-bottom:5px;}
-.mv{font-family:var(--mono);font-size:20px;font-weight:600;}
+/* ── MAPA DE ARMAZÉM ── */
+.map-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+.map-select{padding:9px 13px;background:var(--s1);color:var(--txt);
+  border:1px solid var(--br);border-radius:var(--r);font-size:13px;outline:none;
+  font-family:var(--font);cursor:pointer;}
+.map-grid-label{font-family:var(--mono);font-size:12px;color:var(--txt2);
+  font-weight:600;margin-bottom:12px;letter-spacing:.04em;}
+.map-wrap{overflow-x:auto;padding-bottom:6px;}
+.map-grid{display:inline-block;}
+.map-row{display:flex;gap:6px;margin-bottom:6px;align-items:center;}
+.map-rowlabel{width:24px;height:46px;display:flex;align-items:center;justify-content:center;
+  background:var(--s2);border-radius:6px;font-size:11px;font-weight:700;color:var(--txt2);
+  flex-shrink:0;}
+.map-cell{width:70px;height:46px;border-radius:6px;display:flex;align-items:center;
+  justify-content:center;font-family:var(--mono);font-size:10.5px;font-weight:600;
+  cursor:pointer;transition:.12s;flex-shrink:0;border:1.5px solid transparent;}
+.map-cell:hover{transform:scale(1.05);}
+.map-cell.empty{background:var(--s2);border:1px dashed var(--br);color:transparent;cursor:default;}
+.map-cell.empty:hover{transform:none;}
+.map-cell.livre{background:#16331f;color:var(--gtxt);border-color:var(--green);}
+.map-cell.parcial{background:#332a10;color:var(--atxt);border-color:var(--amber);}
+.map-cell.ocupado{background:#3a1414;color:var(--rtxt);border-color:var(--red);}
+.map-cell.bloqueado{background:var(--s2);color:var(--txt3);border-color:var(--br2);}
+.map-cell.selected{outline:2px solid var(--txt);outline-offset:1px;}
+.map-colheader{width:70px;text-align:center;font-size:11px;color:var(--txt3);
+  font-family:var(--mono);flex-shrink:0;}
+.map-legend{display:flex;gap:20px;flex-wrap:wrap;margin-top:18px;padding-top:16px;
+  border-top:1px solid var(--br);}
+.map-legend-item{display:flex;align-items:center;gap:8px;}
+.map-legend-dot{width:13px;height:13px;border-radius:3px;flex-shrink:0;}
+.map-legend-txt{font-size:11.5px;}
+.map-legend-txt b{display:block;font-size:12px;color:var(--txt);}
+.map-legend-txt span{color:var(--txt3);font-size:10.5px;}
 
-/* LOGIN */
-.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;}
+/* ── PAINEL DE DETALHES (lateral direita) ── */
+.detail-panel{background:var(--s1);border:1px solid var(--br);border-radius:var(--rl);
+  padding:18px;position:sticky;top:80px;}
+.detail-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.detail-close{cursor:pointer;color:var(--txt3);font-size:16px;background:none;border:none;}
+.detail-close:hover{color:var(--txt);}
+.detail-code{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--txt);margin:8px 0 14px;}
+.detail-row{display:flex;justify-content:space-between;padding:8px 0;
+  border-bottom:1px solid var(--br);font-size:12.5px;}
+.detail-row:last-child{border-bottom:none;}
+.detail-row span:first-child{color:var(--txt3);}
+.detail-row span:last-child{color:var(--txt);font-weight:600;font-family:var(--mono);}
+
+/* ── PERFIL ── */
+.profile-photo{width:88px;height:88px;border-radius:50%;background:var(--s2);
+  border:2px solid var(--br2);display:flex;align-items:center;justify-content:center;
+  font-size:30px;font-weight:700;color:var(--btxt);overflow:hidden;flex-shrink:0;}
+.profile-photo img{width:100%;height:100%;object-fit:cover;}
+.cpf-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  font-size:11px;color:var(--btxt);}
+
+/* ── LOGIN ── */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;
+  background:radial-gradient(circle at 20% 20%, #122218 0%, var(--bg) 55%);}
 .login-box{background:var(--s1);border:1px solid var(--br);border-radius:var(--rl);
   padding:36px;width:100%;max-width:380px;}
-.login-logo{font-family:var(--mono);font-size:20px;font-weight:600;color:var(--gtxt);
-  margin-bottom:5px;display:flex;align-items:center;gap:9px;}
-.login-logo::before{content:'';width:9px;height:9px;background:var(--green);
-  border-radius:50%;box-shadow:0 0 10px var(--green);}
-.login-sub{color:var(--txt3);font-size:12px;margin-bottom:24px;}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+.login-logo .sb-logo{width:34px;height:34px;font-size:17px;}
+.login-logo span{font-size:18px;font-weight:700;color:var(--txt);}
+.login-sub{color:var(--txt3);font-size:12px;margin-bottom:26px;}
 .err-msg{color:var(--rtxt);font-size:12px;margin-top:8px;min-height:18px;}
+
+@media (max-width: 900px){
+  .sidebar{position:fixed;left:-100%;height:100vh;transition:.2s;box-shadow:0 0 40px #000a;}
+  .sidebar.open{left:0;}
+  .content{padding:16px;}
+  .topbar{padding:12px 16px;}
+}
 </style>
 """
 
-_NAV_TPL = """<nav>
-  <div class="nb">WMS · TCruzLoc</div>
-  <div class="nl">
-    <a class="na{a}" href="/app">Início</a>
-    <a class="na{b}" href="/conferente-v2">Conferente</a>
-    <a class="na{c}" href="/operacao">Operação</a>
-    <a class="na{d}" href="/gerenciar-volumes">Volumes</a>
-    <a class="na{e}" href="/historico">Histórico</a>
-    <a class="na{f}" href="/enderecos-page">Endereços</a>
+_SIDEBAR_TPL = """<div class="sidebar" id="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">W</div>
+    <div class="sb-name">TCruzLoc</div>
   </div>
-  <div class="nr">
-    <div class="av" id="navAv"></div>
-    <span class="nu" id="navUser"></span>
-    <span class="nc" id="clk"></span>
-    <button class="btn bgh" style="padding:4px 10px;font-size:11px;" onclick="sair()">Sair</button>
+  <div class="sb-nav">
+    <a class="sb-link{a}" href="/app"><span class="ic">⬜</span>Dashboard</a>
+    <a class="sb-link{b}" href="/conferente-v2"><span class="ic">📦</span>Conferente</a>
+    <a class="sb-link{c}" href="/operacao"><span class="ic">🔍</span>Operação</a>
+    <a class="sb-link{d}" href="/gerenciar-volumes"><span class="ic">🗂️</span>Volumes</a>
+    <a class="sb-link{e}" href="/enderecos-page"><span class="ic">🏷️</span>Endereços</a>
+    <a class="sb-link{f}" href="/historico"><span class="ic">📋</span>Histórico</a>
+    <a class="sb-link{g}" href="/perfil"><span class="ic">👤</span>Perfil</a>
+    <a class="sb-link{h} admin-only" href="/usuarios" style="display:none;"><span class="ic">👥</span>Usuários</a>
   </div>
-</nav>
+  <div class="sb-foot">
+    <div class="sb-logout" onclick="sair()"><span class="ic">↩</span>Sair</div>
+  </div>
+</div>"""
+
+_TOPBAR_TPL = """<div class="topbar">
+  <div class="tb-title">
+    <div class="tb-icon" style="background:{iconbg};">{icon}</div>
+    <div>
+      <div class="tb-h1">{title}</div>
+      <div class="tb-sub">{subtitle}</div>
+    </div>
+  </div>
+  <div class="tb-right">
+    <span style="font-family:var(--mono);font-size:11px;color:var(--txt3);" id="clk"></span>
+    <a href="/perfil" class="tb-user">
+      <div class="tb-av" id="navAv"></div>
+      <div>
+        <div class="tb-uname" id="navUser"></div>
+        <div class="tb-urole" id="navRole"></div>
+      </div>
+    </a>
+  </div>
+</div>
 <div id="toast"></div>
 <script>
 (function(){
@@ -299,10 +387,19 @@ _NAV_TPL = """<nav>
   }
   document.addEventListener('DOMContentLoaded',function(){
     var u=localStorage.getItem('wms_user')||'';
-    var el=document.getElementById('navUser');if(el)el.textContent=u;
+    var papel=localStorage.getItem('wms_papel')||'OPERADOR';
+    var foto=localStorage.getItem('wms_foto')||'';
+    var elU=document.getElementById('navUser');if(elU)elU.textContent=u;
+    var elR=document.getElementById('navRole');if(elR)elR.textContent=papel==='ADMIN'?'Administrador':'Operador';
     var av=document.getElementById('navAv');
-    if(av){var p=u.trim().split(' ');
-      av.textContent=p.length>=2?(p[0][0]+p[p.length-1][0]).toUpperCase():u.substring(0,2).toUpperCase();}
+    if(av){
+      if(foto){av.innerHTML='<img src="'+foto+'">';}
+      else{var p=u.trim().split(' ');
+        av.textContent=p.length>=2?(p[0][0]+p[p.length-1][0]).toUpperCase():u.substring(0,2).toUpperCase();}
+    }
+    if(papel==='ADMIN'){
+      document.querySelectorAll('.admin-only').forEach(function(el){el.style.display='flex';});
+    }
   });
   function tick(){var d=new Date();var el=document.getElementById('clk');
     if(el)el.textContent=d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR');}
@@ -311,18 +408,36 @@ _NAV_TPL = """<nav>
     el.textContent=msg;el.className='show '+(t||'ok');
     clearTimeout(el._t);el._t=setTimeout(()=>el.className='',3000);};
   window.sair=function(){localStorage.removeItem('wms_token');
-    localStorage.removeItem('wms_user');window.location.href='/login';};
+    localStorage.removeItem('wms_user');localStorage.removeItem('wms_papel');
+    localStorage.removeItem('wms_foto');window.location.href='/login';};
 })();
 </script>"""
 
 
-def nav(active: str) -> str:
-    m = {'home':'a','conf':'b','oper':'c','vol':'d','hist':'e','end':'f'}
-    t = _NAV_TPL
+def sidebar(active: str) -> str:
+    m = {'home':'a','conf':'b','oper':'c','vol':'d','end':'e','hist':'f','perfil':'g','users':'h'}
+    t = _SIDEBAR_TPL
     for k, v in m.items():
         t = t.replace('{'+v+'}', ' on' if active == k else '')
     return t
 
+
+def topbar(icon: str, iconbg: str, title: str, subtitle: str) -> str:
+    return (_TOPBAR_TPL
+            .replace('{icon}', icon)
+            .replace('{iconbg}', iconbg)
+            .replace('{title}', title)
+            .replace('{subtitle}', subtitle))
+
+
+def shell_open(active: str, icon: str, iconbg: str, title: str, subtitle: str) -> str:
+    """Abre a estrutura: sidebar + main + topbar + content. Lembrar de fechar com shell_close()."""
+    return (f'<div class="shell">{sidebar(active)}<div class="main">'
+            f'{topbar(icon, iconbg, title, subtitle)}<div class="content">')
+
+
+def shell_close() -> str:
+    return '</div></div></div>'
 
 # ══════════════════════════════════════════════════════════════════
 #  PWA
@@ -353,20 +468,75 @@ def api_login(dados: schema.LoginInput, db: Session = Depends(get_db)):
     return fazer_login(db, dados.login, dados.senha)
 
 @app.post("/auth/criar-usuario", response_model=schema.UsuarioResposta)
-def api_criar_usuario(dados: schema.UsuarioCriar, db: Session = Depends(get_db)):
-    return criar_usuario(db, dados.nome, dados.login, dados.senha)
+def api_criar_usuario(dados: schema.UsuarioCriar, db: Session = Depends(get_db),
+                      authorization: str = Header(default="")):
+    """Primeira conta pode ser criada livremente; depois disso exige admin."""
+    tem_usuarios = db.query(models.Usuario).first() is not None
+    if tem_usuarios:
+        u = get_usuario_atual(db, authorization)
+        exigir_admin(u)
+    return criar_usuario(db, dados.nome, dados.login, dados.senha, dados.papel,
+                         dados.email, dados.telefone, dados.cpf)
 
 @app.get("/auth/me")
 def api_me(db: Session = Depends(get_db), authorization: str = Header(default="")):
     u = get_usuario_atual(db, authorization)
-    return {"id": u.id, "nome": u.nome, "login": u.login}
+    return crud.perfil_para_resposta(u, revelar_cpf=False)
 
 
 # ══════════════════════════════════════════════════════════════════
-#  API ROTAS
+#  PERFIL
+# ══════════════════════════════════════════════════════════════════
+@app.get("/perfil-api", response_model=schema.PerfilResposta)
+def perfil_proprio(db: Session = Depends(get_db), authorization: str = Header(default="")):
+    u = get_usuario_atual(db, authorization)
+    return crud.perfil_para_resposta(u, revelar_cpf=False)
+
+@app.get("/perfil-api/cpf-completo")
+def perfil_cpf_completo(db: Session = Depends(get_db), authorization: str = Header(default="")):
+    """Só o próprio usuário pode revelar o próprio CPF completo."""
+    u = get_usuario_atual(db, authorization)
+    return {"cpf": u.cpf or ""}
+
+@app.patch("/perfil-api", response_model=schema.PerfilResposta)
+def atualizar_perfil_proprio(dados: schema.PerfilAtualizar, db: Session = Depends(get_db),
+                             authorization: str = Header(default="")):
+    u = get_usuario_atual(db, authorization)
+    u = crud.atualizar_perfil(db, u, dados)
+    return crud.perfil_para_resposta(u, revelar_cpf=False)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  USUÁRIOS (admin)
+# ══════════════════════════════════════════════════════════════════
+@app.get("/usuarios-api")
+def listar_usuarios_admin(db: Session = Depends(get_db), authorization: str = Header(default="")):
+    u = get_usuario_atual(db, authorization)
+    exigir_admin(u)
+    return [crud.perfil_para_resposta(x, revelar_cpf=False) for x in crud.listar_usuarios(db)]
+
+@app.patch("/usuarios-api/{usuario_id}/ativo")
+def alternar_ativo(usuario_id: int, ativo: bool, db: Session = Depends(get_db),
+                   authorization: str = Header(default="")):
+    u = get_usuario_atual(db, authorization)
+    exigir_admin(u)
+    alvo = crud.alternar_ativo_usuario(db, usuario_id, ativo)
+    return crud.perfil_para_resposta(alvo, revelar_cpf=False)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  DASHBOARD
+# ══════════════════════════════════════════════════════════════════
+@app.get("/dashboard-api")
+def dashboard_api(db: Session = Depends(get_db)):
+    return crud.metricas_dashboard(db)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  API ROTAS — armazém, paletes, pedidos
 # ══════════════════════════════════════════════════════════════════
 @app.get("/")
-def root(): return {"status": "ok", "app": "WMS TCruzLoc v3"}
+def root(): return {"status": "ok", "app": "WMS TCruzLoc v4"}
 
 @app.get("/health")
 def health():
@@ -390,11 +560,14 @@ def atualizar_status(codigo: str, dados: schema.EnderecoStatusUpdate,
     u = get_usuario_atual(db, authorization)
     return crud.atualizar_status_endereco(db, codigo, dados.status_ocupacao, u)
 
+@app.get("/enderecos/{codigo}/pedidos")
+def pedidos_endereco_api(codigo: str, db: Session = Depends(get_db)):
+    return crud.pedidos_no_endereco(db, codigo)
+
 @app.get("/caixas", response_model=list[schema.CaixaResposta])
 def listar_caixas(db: Session = Depends(get_db)):
     return crud.listar_caixas(db)
 
-# Paletes — estáticas ANTES de dinâmicas
 @app.post("/paletes/manual", response_model=schema.PaleteResposta)
 def criar_palete_manual(dados: schema.PaleteManualCriar, db: Session = Depends(get_db),
                         authorization: str = Header(default="")):
@@ -409,7 +582,6 @@ def criar_palete_auto(palete: schema.PaleteCriar, db: Session = Depends(get_db))
 def listar_paletes(db: Session = Depends(get_db)):
     return crud.listar_paletes(db)
 
-# Volumes — estáticas ANTES de dinâmicas
 @app.delete("/pedidos-volume/duplicados")
 def limpar_dup(db: Session = Depends(get_db)):
     return crud.limpar_pedidos_duplicados(db)
@@ -451,23 +623,16 @@ def buscar_pedido(numero_pedido: str, db: Session = Depends(get_db)):
     return crud.buscar_pedido(db, numero_pedido)
 
 @app.get("/historico-api")
-def historico_api(db: Session = Depends(get_db),
-                  authorization: str = Header(default="")):
+def historico_api(db: Session = Depends(get_db), authorization: str = Header(default="")):
     get_usuario_atual(db, authorization)
     return [{
-        "id": h.id,
-        "usuario_nome":  h.usuario_nome  or "—",
-        "acao":          h.acao,
-        "numero_pedido": h.numero_pedido or "—",
-        "volume_atual":  h.volume_atual,
-        "volume_total":  h.volume_total,
-        "palete_codigo": h.palete_codigo or "—",
-        "endereco_de":   h.endereco_de   or "—",
-        "endereco_para": h.endereco_para or "—",
+        "id": h.id, "usuario_nome": h.usuario_nome or "—", "acao": h.acao,
+        "numero_pedido": h.numero_pedido or "—", "volume_atual": h.volume_atual,
+        "volume_total": h.volume_total, "palete_codigo": h.palete_codigo or "—",
+        "endereco_de": h.endereco_de or "—", "endereco_para": h.endereco_para or "—",
         "detalhe_extra": h.detalhe_extra or "",
         "criado_em": h.criado_em.strftime("%d/%m/%Y %H:%M:%S") if h.criado_em else "—",
     } for h in crud.listar_historico(db)]
-
 
 # ══════════════════════════════════════════════════════════════════
 #  PÁGINA: LOGIN
@@ -478,7 +643,7 @@ def pg_login():
 </head><body>
 <div class="login-wrap">
 <div class="login-box">
-  <div class="login-logo">WMS · TCruzLoc</div>
+  <div class="login-logo"><div class="sb-logo">W</div><span>TCruzLoc</span></div>
   <div class="login-sub">Sistema de Gerenciamento de Armazém</div>
   <div class="f"><label>Usuário</label>
     <input class="fi" id="lg" placeholder="seu.login" autofocus
@@ -506,156 +671,401 @@ async function entrar(){{
     if(d.detail){{e.textContent=d.detail;return;}}
     localStorage.setItem('wms_token',d.token);
     localStorage.setItem('wms_user',d.nome);
+    localStorage.setItem('wms_papel',d.papel||'OPERADOR');
     window.location.href='/app';
   }}catch(ex){{e.textContent='Erro de conexão.';}}
 }}
 if(localStorage.getItem('wms_token'))window.location.href='/app';
 </script></body></html>"""
 
-
 # ══════════════════════════════════════════════════════════════════
-#  PÁGINA: HOME
+#  PÁGINA: DASHBOARD — mapa do armazém em tempo real
 # ══════════════════════════════════════════════════════════════════
 @app.get("/app", response_class=HTMLResponse)
-def pg_home():
-    return f"""<!DOCTYPE html><html lang="pt-BR"><head>{_SHARED}<title>WMS · Início</title></head><body>
-{nav('home')}
-<div class="page">
-  <div style="margin-bottom:22px;">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-      <h1 style="font-family:var(--mono);font-size:21px;font-weight:600;color:var(--gtxt);">WMS · TCruzLoc_Dyo</h1>
-      <span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--gdim);
-        color:var(--gtxt);border:1px solid var(--green);font-family:var(--mono);">v3.0 online</span>
+def pg_dashboard():
+    return ("""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED +
+            """<title>WMS · Dashboard</title></head><body>""" +
+            shell_open('home', '🗺️', 'var(--gdim)', 'Mapa do Armazém', 'Visão geral dos endereços e sua ocupação') +
+            r"""
+  <div class="map-toolbar">
+    <select class="map-select" id="selRua" onchange="renderMapa()"></select>
+    <select class="map-select" id="selNivel" onchange="renderMapa()"></select>
+    <div class="sw" style="flex:1;min-width:200px;">
+      <span class="si">⌕</span>
+      <input id="buscaEnd" placeholder="Buscar endereço..." style="padding:9px 13px 9px 38px;font-size:13px;"
+        oninput="renderMapa()">
     </div>
-    <p style="color:var(--txt3);font-size:12px;">Sistema de gerenciamento de armazém</p>
+    <select class="map-select" id="selStatus" onchange="renderMapa()">
+      <option value="">Todos os status</option>
+      <option value="LIVRE">Livre</option>
+      <option value="PARCIAL">Parcial</option>
+      <option value="OCUPADO">Ocupado</option>
+      <option value="BLOQUEADO">Bloqueado</option>
+    </select>
+    <button class="btn bg" onclick="carregarTudo()">↺ Atualizar</button>
   </div>
 
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
-    <div class="metric"><div class="ml">Volumes ativos</div>
-      <div class="mv" id="mv" style="color:var(--gtxt);">—</div></div>
-    <div class="metric"><div class="ml">Endereços livres</div>
-      <div class="mv" id="me-l" style="color:var(--gtxt);">—</div></div>
-    <div class="metric"><div class="ml">Endereços parciais</div>
-      <div class="mv" id="me-p" style="color:var(--atxt);">—</div></div>
-    <div class="metric"><div class="ml">Endereços ocupados</div>
-      <div class="mv" id="me-o" style="color:var(--rtxt);">—</div></div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;">
+    <div class="metric-card"><div><div class="num" id="m-ocupados" style="color:var(--rtxt);">—</div>
+      <div class="lbl">Ocupados</div></div><div class="trend">🔴</div></div>
+    <div class="metric-card"><div><div class="num" id="m-parciais" style="color:var(--atxt);">—</div>
+      <div class="lbl">Parciais</div></div><div class="trend">🟡</div></div>
+    <div class="metric-card"><div><div class="num" id="m-livres" style="color:var(--gtxt);">—</div>
+      <div class="lbl">Livres</div></div><div class="trend">🟢</div></div>
+    <div class="metric-card"><div><div class="num" id="m-total" style="color:var(--txt);">—</div>
+      <div class="lbl">Total Endereços</div></div><div class="trend">📋</div></div>
   </div>
 
-  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px;">
-    <a href="/conferente-v2"><div class="mod-card">
-      <div class="mod-icon" style="background:var(--gdim);">📦</div>
-      <div class="mod-title" style="color:var(--gtxt);">Conferente</div>
-      <div class="mod-desc">Montar paletes, endereçar pedidos e registrar volumes.</div>
-      <div class="mod-cta" style="color:var(--gtxt);">ACESSAR →</div>
-    </div></a>
-    <a href="/operacao"><div class="mod-card">
-      <div class="mod-icon" style="background:var(--bdim);">🔍</div>
-      <div class="mod-title" style="color:var(--btxt);">Operação</div>
-      <div class="mod-desc">Consultar onde está um pedido ou listar pedidos de um endereço.</div>
-      <div class="mod-cta" style="color:var(--btxt);">ACESSAR →</div>
-    </div></a>
-    <a href="/gerenciar-volumes"><div class="mod-card">
-      <div class="mod-icon" style="background:var(--adim);">🗂️</div>
-      <div class="mod-title" style="color:var(--atxt);">Volumes</div>
-      <div class="mod-desc">Visualizar, filtrar, transferir e apagar volumes cadastrados.</div>
-      <div class="mod-cta" style="color:var(--atxt);">ACESSAR →</div>
-    </div></a>
-    <a href="/historico"><div class="mod-card">
-      <div class="mod-icon" style="background:var(--pdim);">📋</div>
-      <div class="mod-title" style="color:var(--ptxt);">Histórico</div>
-      <div class="mod-desc">Auditoria completa — cadastros, exclusões e transferências.</div>
-      <div class="mod-cta" style="color:var(--ptxt);">ACESSAR →</div>
-    </div></a>
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:14px;align-items:start;">
+    <div class="card" style="margin-bottom:0;">
+      <div class="map-grid-label" id="mapaLabel">RUA — NÍVEL</div>
+      <div class="map-wrap">
+        <div class="map-grid" id="mapaGrid"></div>
+      </div>
+      <div class="map-legend">
+        <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--green);"></div>
+          <div class="map-legend-txt"><b>Livre</b><span>Disponível para uso</span></div></div>
+        <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--amber);"></div>
+          <div class="map-legend-txt"><b>Parcial</b><span>Parcialmente ocupado</span></div></div>
+        <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--red);"></div>
+          <div class="map-legend-txt"><b>Ocupado</b><span>Totalmente ocupado</span></div></div>
+        <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--br2);"></div>
+          <div class="map-legend-txt"><b>Bloqueado</b><span>Não disponível</span></div></div>
+      </div>
+    </div>
+
+    <div id="painelVazio" class="card" style="text-align:center;color:var(--txt3);font-size:13px;padding:40px 18px;">
+      Clique em um endereço<br>para ver os detalhes
+    </div>
+    <div class="detail-panel" id="painelDetalhe" style="display:none;">
+      <div class="detail-head">
+        <span class="bk" id="dStatusBadge">—</span>
+        <button class="detail-close" onclick="fecharPainel()">✕</button>
+      </div>
+      <div class="detail-code" id="dCodigo">—</div>
+      <div class="detail-row"><span>Rua</span><span id="dRua">—</span></div>
+      <div class="detail-row"><span>Nível</span><span id="dNivel">—</span></div>
+      <div class="detail-row"><span>Posição</span><span id="dPosicao">—</span></div>
+      <div class="detail-row"><span>Status</span><span id="dStatus">—</span></div>
+      <div class="detail-row"><span>Capacidade</span><span id="dCapacidade">—</span></div>
+      <div class="detail-row"><span>Operador</span><span id="dOperador">—</span></div>
+
+      <div class="divider"></div>
+      <div class="ct" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Pedidos no endereço</span>
+        <span id="dQtdPedidos" style="color:var(--gtxt);">—</span>
+      </div>
+      <div id="dPedidosLista" style="display:flex;flex-direction:column;gap:8px;margin-top:6px;"></div>
+
+      <div class="divider"></div>
+      <div class="brow" style="flex-direction:column;">
+        <button class="btn bgh bfull" onclick="window.location.href='/historico'">📋 Ver histórico deste endereço</button>
+      </div>
+    </div>
   </div>
 
-  <div class="divider"></div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-    <a href="/seed"><button class="btn bgh" style="font-size:11px;">⚙️ Inicializar endereços</button></a>
-    <a href="/criar-admin"><button class="btn bgh" style="font-size:11px;">👤 Criar usuário</button></a>
-    <a href="/health"><button class="btn bgh" style="font-size:11px;">💚 Status</button></a>
-    <a href="/docs"><button class="btn bgh" style="font-size:11px;">📄 API</button></a>
-    <span style="margin-left:auto;font-size:11px;color:var(--txt3);">
-      📱 Chrome → ⋮ → Adicionar à tela inicial
-    </span>
-  </div>
-</div>
 <script>
-async function loadMetrics(){{
-  try{{
-    var dv=await(await fetch('/pedidos-volume')).json();
-    document.getElementById('mv').textContent=Array.isArray(dv)?dv.length:'—';
-    var de=await(await fetch('/enderecos-status')).json();
-    if(Array.isArray(de)){{
-      document.getElementById('me-l').textContent=de.filter(e=>e.status==='LIVRE').length;
-      document.getElementById('me-p').textContent=de.filter(e=>e.status==='PARCIAL').length;
-      document.getElementById('me-o').textContent=de.filter(e=>e.status==='OCUPADO').length;
-    }}
-  }}catch(e){{}}
-}}
-loadMetrics();
+var TODOS_ENDERECOS=[];
+var enderecoSelecionado=null;
+var pollTimer=null;
+
+function corClasse(s){
+  if(s==='LIVRE')return'livre';
+  if(s==='PARCIAL')return'parcial';
+  if(s==='OCUPADO')return'ocupado';
+  if(s==='BLOQUEADO')return'bloqueado';
+  return'livre';
+}
+function corBadge(s){
+  if(s==='LIVRE')return'bk-green';
+  if(s==='PARCIAL')return'bk-amber';
+  if(s==='OCUPADO')return'bk-red';
+  if(s==='BLOQUEADO')return'bk-blue';
+  return'bk-green';
+}
+
+async function carregarTudo(){
+  try{
+    var resE=await fetch('/enderecos');
+    var resD=await fetch('/dashboard-api');
+    TODOS_ENDERECOS=await resE.json();
+    var dash=await resD.json();
+    document.getElementById('m-ocupados').textContent=dash.ocupados;
+    document.getElementById('m-parciais').textContent=dash.parciais;
+    document.getElementById('m-livres').textContent=dash.livres;
+    document.getElementById('m-total').textContent=dash.total;
+    montarFiltros();
+    renderMapa();
+  }catch(e){}
+}
+
+function montarFiltros(){
+  var ruas=[...new Set(TODOS_ENDERECOS.map(function(e){return e.rua;}))].sort();
+  var selRua=document.getElementById('selRua');
+  var ruaAtual=selRua.value;
+  selRua.innerHTML=ruas.map(function(r){return '<option value="'+r+'">Rua '+r+'</option>';}).join('');
+  if(ruas.indexOf(ruaAtual)!==-1)selRua.value=ruaAtual;
+
+  var niveis=[...new Set(TODOS_ENDERECOS.filter(function(e){return e.rua===selRua.value;}).map(function(e){return e.predio;}))].sort();
+  var selNivel=document.getElementById('selNivel');
+  var nivelAtual=selNivel.value;
+  selNivel.innerHTML=niveis.map(function(n){return '<option value="'+n+'">Nível '+n+'</option>';}).join('');
+  if(niveis.indexOf(nivelAtual)!==-1)selNivel.value=nivelAtual;
+}
+
+function renderMapa(){
+  var rua=document.getElementById('selRua').value;
+  var nivel=document.getElementById('selNivel').value;
+  var busca=document.getElementById('buscaEnd').value.trim().toUpperCase();
+  var statusFiltro=document.getElementById('selStatus').value;
+
+  document.getElementById('mapaLabel').textContent='RUA '+rua+' — NÍVEL '+nivel;
+
+  var doNivel=TODOS_ENDERECOS.filter(function(e){return e.rua===rua&&e.predio===nivel;});
+  doNivel.sort(function(a,b){
+    var na=parseInt(a.andar)||0, nb=parseInt(b.andar)||0;
+    return na-nb;
+  });
+
+  var frentes=[...new Set(doNivel.map(function(e){return e.frente||'A';}))].sort();
+  var posicoes=[...new Set(doNivel.map(function(e){return parseInt(e.andar)||0;}))].sort(function(a,b){return a-b;});
+  if(!posicoes.length){
+    document.getElementById('mapaGrid').innerHTML='<p style="color:var(--txt3);padding:20px;">Nenhum endereço nesta seleção.</p>';
+    return;
+  }
+  var minPos=posicoes[0], maxPos=posicoes[posicoes.length-1];
+  var todasPos=[];
+  for(var p=minPos;p<=maxPos;p++)todasPos.push(p);
+
+  var html='<div class="map-row" style="margin-left:30px;">';
+  todasPos.forEach(function(p){html+='<div class="map-colheader">'+p+'</div>';});
+  html+='</div>';
+
+  frentes.forEach(function(fr){
+    html+='<div class="map-row"><div class="map-rowlabel">'+fr+'</div>';
+    todasPos.forEach(function(p){
+      var end=doNivel.find(function(e){return (e.frente||'A')===fr&&(parseInt(e.andar)||0)===p;});
+      if(!end){html+='<div class="map-cell empty">.</div>';return;}
+      var st=end.status_ocupacao||'LIVRE';
+      var visivel=true;
+      if(busca&&end.codigo.toUpperCase().indexOf(busca)===-1)visivel=false;
+      if(statusFiltro&&st!==statusFiltro)visivel=false;
+      var cls='map-cell '+corClasse(st)+(visivel?'':' empty')+
+        (enderecoSelecionado===end.codigo?' selected':'');
+      html+="<div class='"+cls+"' onclick='selecionarEndereco(&quot;"+end.codigo+"&quot;)' title='"+end.codigo+"'>"+
+        (visivel?end.codigo.replace('R',''):'')+'</div>';
+    });
+    html+='</div>';
+  });
+  document.getElementById('mapaGrid').innerHTML=html;
+}
+
+async function selecionarEndereco(codigo){
+  enderecoSelecionado=codigo;
+  renderMapa();
+  var end=TODOS_ENDERECOS.find(function(e){return e.codigo===codigo;});
+  if(!end)return;
+
+  document.getElementById('painelVazio').style.display='none';
+  document.getElementById('painelDetalhe').style.display='block';
+
+  var st=end.status_ocupacao||'LIVRE';
+  var badge=document.getElementById('dStatusBadge');
+  badge.className='bk '+corBadge(st);
+  badge.textContent=st;
+
+  document.getElementById('dCodigo').textContent=end.codigo;
+  document.getElementById('dRua').textContent=end.rua;
+  document.getElementById('dNivel').textContent=end.predio;
+  document.getElementById('dPosicao').textContent=end.andar+(end.frente?(' '+end.frente):'');
+  document.getElementById('dStatus').textContent=st;
+  var pct=end.capacidade_total?Math.round((end.capacidade_usada/end.capacidade_total)*100):0;
+  document.getElementById('dCapacidade').textContent=pct+'% ('+end.capacidade_usada+'/'+end.capacidade_total+' Palete)';
+  document.getElementById('dOperador').textContent=getUser()||'—';
+
+  try{
+    var r=await fetch('/enderecos/'+encodeURIComponent(codigo)+'/pedidos');
+    var pedidos=await r.json();
+    document.getElementById('dQtdPedidos').textContent=pedidos.length+' pedido(s)';
+    var lista=document.getElementById('dPedidosLista');
+    if(!pedidos.length){
+      lista.innerHTML='<div style="font-size:11.5px;color:var(--txt3);">Nenhum pedido neste endereço.</div>';
+    }else{
+      lista.innerHTML=pedidos.map(function(p){
+        return '<div style="background:var(--s2);border-radius:8px;padding:10px 12px;'+
+          'display:flex;justify-content:space-between;align-items:center;">'+
+          '<div><div style="font-family:var(--mono);font-weight:600;font-size:13px;">'+p.pedido+'</div>'+
+          '<div style="font-size:10.5px;color:var(--txt3);">Volume: '+p.qtd+'/'+p.total+'</div></div>'+
+          '<span class="bk bk-blue">'+(p.qtd===p.total?'COMPLETO':'PARCIAL')+'</span></div>';
+      }).join('');
+    }
+  }catch(e){}
+}
+
+function fecharPainel(){
+  enderecoSelecionado=null;
+  document.getElementById('painelDetalhe').style.display='none';
+  document.getElementById('painelVazio').style.display='block';
+  renderMapa();
+}
+
+carregarTudo();
+pollTimer=setInterval(carregarTudo,15000);
 </script>
-</body></html>"""
-
+""" + shell_close() + """
+</body></html>""")
 
 # ══════════════════════════════════════════════════════════════════
-#  PÁGINA: CRIAR USUÁRIO
+#  PÁGINA: PERFIL — dados pessoais com CPF mascarado
 # ══════════════════════════════════════════════════════════════════
-@app.get("/criar-admin", response_class=HTMLResponse)
-def pg_criar_usuario():
-    return f"""<!DOCTYPE html><html lang="pt-BR"><head>{_SHARED}<title>WMS · Criar Usuário</title></head><body>
-{nav('home')}
-<div class="page">
-  <div style="margin-bottom:22px;">
-    <h1 style="font-family:var(--mono);font-size:19px;font-weight:600;color:var(--gtxt);">Criar Usuário</h1>
+@app.get("/perfil", response_class=HTMLResponse)
+def pg_perfil():
+    return ("""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED +
+            """<title>WMS · Perfil</title></head><body>""" +
+            shell_open('perfil', '👤', 'var(--bdim)', 'Meu Perfil', 'Seus dados pessoais e de acesso') +
+            r"""
+  <div style="display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start;">
+    <div class="card" style="text-align:center;">
+      <div class="profile-photo" id="pFotoWrap" style="margin:0 auto 14px;">
+        <span id="pFotoIniciais">--</span>
+      </div>
+      <div style="font-weight:600;font-size:15px;" id="pNomeCard">—</div>
+      <div style="font-size:11.5px;color:var(--txt3);margin-top:2px;" id="pPapelCard">—</div>
+      <input type="file" id="inputFoto" accept="image/*" style="display:none;" onchange="onFotoSelecionada(event)">
+      <button class="btn bgh bfull" style="margin-top:14px;" onclick="document.getElementById('inputFoto').click()">
+        📷 Alterar foto
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="ct">Dados Pessoais</div>
+      <div class="g2">
+        <div class="f"><label>Nome completo</label>
+          <input class="fi" id="pNome" placeholder="Seu nome"></div>
+        <div class="f"><label>Login (não editável)</label>
+          <input class="fi" id="pLogin" disabled></div>
+      </div>
+      <div class="g2">
+        <div class="f"><label>E-mail</label>
+          <input class="fi" id="pEmail" type="email" placeholder="seu@email.com"></div>
+        <div class="f"><label>Telefone</label>
+          <input class="fi" id="pTelefone" placeholder="(11) 99999-9999"></div>
+      </div>
+      <div class="f">
+        <label>CPF</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input class="fi" id="pCpf" placeholder="000.000.000-00" style="flex:1;">
+          <span class="cpf-toggle" onclick="alternarCpf()" id="cpfToggleBtn">👁 Mostrar completo</span>
+        </div>
+      </div>
+      <div class="brow" style="margin-top:8px;">
+        <button class="btn bg" onclick="salvarPerfil()">✓ Salvar Alterações</button>
+      </div>
+      <div id="pMsg" style="font-size:12px;margin-top:10px;min-height:18px;"></div>
+    </div>
   </div>
-  <div class="card" style="max-width:400px;">
-    <div class="f"><label>Nome completo</label>
-      <input class="fi" id="nome" placeholder="Ex: João Silva" autofocus
-        onkeydown="if(event.key==='Enter')document.getElementById('login').focus()"></div>
-    <div class="f"><label>Login</label>
-      <input class="fi" id="login" placeholder="Ex: joao.silva"
-        onkeydown="if(event.key==='Enter')document.getElementById('senha').focus()"></div>
-    <div class="f"><label>Senha</label>
-      <input class="fi" id="senha" type="password" placeholder="Mínimo 4 caracteres"
-        onkeydown="if(event.key==='Enter')criar()"></div>
-    <button class="btn bg bfull" style="margin-top:4px;" onclick="criar()">Criar Usuário</button>
-    <div id="msg" style="margin-top:10px;font-size:12px;min-height:18px;"></div>
-  </div>
-</div>
+
 <script>
-async function criar(){{
-  var n=document.getElementById('nome').value.trim();
-  var l=document.getElementById('login').value.trim();
-  var s=document.getElementById('senha').value;
-  var m=document.getElementById('msg');
-  if(!n||!l||!s){{m.style.color='var(--rtxt)';m.textContent='Preencha todos os campos.';return;}}
-  try{{
-    var r=await fetch('/auth/criar-usuario',{{method:'POST',
-      headers:authHeaders(),body:JSON.stringify({{nome:n,login:l,senha:s}})}});
-    var d=await r.json();
-    if(d.detail){{m.style.color='var(--rtxt)';m.textContent=d.detail;}}
-    else{{m.style.color='var(--gtxt)';m.textContent='✓ Usuário "'+d.login+'" criado!';
-      document.getElementById('nome').value='';document.getElementById('login').value='';
-      document.getElementById('senha').value='';}}
-  }}catch(e){{m.style.color='var(--rtxt)';m.textContent='Erro de conexão.';}}
-}}
-</script></body></html>"""
+var cpfRevelado=false;
+var cpfCompletoCache='';
 
+function iniciaisDe(nome){
+  var p=(nome||'').trim().split(' ');
+  return p.length>=2?(p[0][0]+p[p.length-1][0]).toUpperCase():(nome||'?').substring(0,2).toUpperCase();
+}
+
+async function carregarPerfil(){
+  try{
+    var r=await fetch('/perfil-api',{headers:authHeaders()});
+    if(r.status===401){window.location.href='/login';return;}
+    var d=await r.json();
+    document.getElementById('pNome').value=d.nome||'';
+    document.getElementById('pLogin').value=d.login||'';
+    document.getElementById('pEmail').value=d.email||'';
+    document.getElementById('pTelefone').value=d.telefone||'';
+    document.getElementById('pCpf').value=d.cpf_mascarado||'';
+    document.getElementById('pNomeCard').textContent=d.nome||'—';
+    document.getElementById('pPapelCard').textContent=d.papel==='ADMIN'?'Administrador':'Operador';
+    var fotoWrap=document.getElementById('pFotoWrap');
+    if(d.foto_url){
+      fotoWrap.innerHTML='<img src="'+d.foto_url+'">';
+    }else{
+      fotoWrap.innerHTML='<span>'+iniciaisDe(d.nome)+'</span>';
+    }
+  }catch(e){}
+}
+
+async function alternarCpf(){
+  var campo=document.getElementById('pCpf');
+  var btn=document.getElementById('cpfToggleBtn');
+  if(!cpfRevelado){
+    try{
+      var r=await fetch('/perfil-api/cpf-completo',{headers:authHeaders()});
+      var d=await r.json();
+      cpfCompletoCache=d.cpf||'';
+      campo.value=cpfCompletoCache;
+      btn.textContent='🙈 Ocultar';
+      cpfRevelado=true;
+    }catch(e){toast('Erro ao revelar CPF','err');}
+  }else{
+    await carregarPerfil();
+    btn.textContent='👁 Mostrar completo';
+    cpfRevelado=false;
+  }
+}
+
+function onFotoSelecionada(ev){
+  var file=ev.target.files[0];
+  if(!file)return;
+  if(file.size>1500000){toast('Imagem muito grande (máx 1.5MB)','err');return;}
+  var reader=new FileReader();
+  reader.onload=function(e){
+    document.getElementById('pFotoWrap').innerHTML='<img src="'+e.target.result+'">';
+    window._novaFoto=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function salvarPerfil(){
+  var msg=document.getElementById('pMsg');
+  var payload={
+    nome: document.getElementById('pNome').value.trim(),
+    email: document.getElementById('pEmail').value.trim(),
+    telefone: document.getElementById('pTelefone').value.trim(),
+  };
+  var cpfVal=document.getElementById('pCpf').value.trim();
+  if(cpfRevelado && cpfVal && cpfVal.indexOf('*')===-1){
+    payload.cpf=cpfVal;
+  }
+  if(window._novaFoto)payload.foto_url=window._novaFoto;
+
+  try{
+    var r=await fetch('/perfil-api',{method:'PATCH',headers:authHeaders(),body:JSON.stringify(payload)});
+    var d=await r.json();
+    if(d.detail){msg.style.color='var(--rtxt)';msg.textContent=d.detail;return;}
+    localStorage.setItem('wms_user',d.nome);
+    if(d.foto_url)localStorage.setItem('wms_foto',d.foto_url);
+    msg.style.color='var(--gtxt)';msg.textContent='✓ Perfil atualizado com sucesso!';
+    toast('Perfil atualizado!');
+    cpfRevelado=false;
+    carregarPerfil();
+  }catch(e){msg.style.color='var(--rtxt)';msg.textContent='Erro de conexão.';}
+}
+
+carregarPerfil();
+</script>
+""" + shell_close() + """
+</body></html>""")
 
 # ══════════════════════════════════════════════════════════════════
-#  PÁGINA: CONFERENTE v2 — com dropdown de endereços + status colorido
+#  PÁGINA: CONFERENTE — dropdown de endereços com status colorido
 # ══════════════════════════════════════════════════════════════════
 @app.get("/conferente-v2", response_class=HTMLResponse)
 def pg_conferente():
-    return r"""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED + r"""
-<title>WMS · Conferente</title></head><body>
-""" + nav("conf") + r"""
-<div class="page">
-  <div style="margin-bottom:18px;">
-    <h1 style="font-family:var(--mono);font-size:19px;font-weight:600;color:var(--gtxt);">Montagem de Palete</h1>
-    <p style="color:var(--txt3);font-size:12px;margin-top:3px;">Informe palete e endereço, depois adicione os pedidos.</p>
-  </div>
-
+    return ("""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED +
+            """<title>WMS · Conferente</title></head><body>""" +
+            shell_open('conf', '📦', 'var(--gdim)', 'Montagem de Palete', 'Informe palete e endereço, depois adicione os pedidos') +
+            r"""
   <div class="card">
     <div class="ct">Identificação do Palete</div>
     <div class="g2">
@@ -700,7 +1110,7 @@ def pg_conferente():
     </div>
   </div>
 
-  <div class="sb info" id="stbar"><div class="dot"></div>Aguardando dados...</div>
+  <div class="sb-status info" id="stbar"><div class="dot"></div>Aguardando dados...</div>
   <div class="term" id="out">Pedidos adicionados aparecerão aqui...</div>
 
   <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
@@ -713,14 +1123,12 @@ def pg_conferente():
     <div class="stat" style="flex:0 0 auto;min-width:78px;"><div class="sl">Volumes</div>
       <div class="sv" id="s-nvol">0</div></div>
   </div>
-</div>
 
 <script>
 var resumo=[],totalVols=0;
-var endStatus={};      // cache: codigo -> status
-var endLista=[];       // lista de códigos de endereço (ordenada)
+var endStatus={};
+var endLista=[];
 
-// Carrega status de todos os endereços ao iniciar
 async function carregarStatusEnderecos(){
   try{
     var r=await fetch('/enderecos-status');
@@ -735,12 +1143,14 @@ function corDot(st){
   if(st==='LIVRE')return'var(--green)';
   if(st==='PARCIAL')return'var(--amber)';
   if(st==='OCUPADO')return'var(--red)';
+  if(st==='BLOQUEADO')return'var(--txt3)';
   return'var(--txt3)';
 }
 function labelStatus(st){
   if(st==='LIVRE')return'Livre';
   if(st==='PARCIAL')return'Parcial';
   if(st==='OCUPADO')return'Ocupado';
+  if(st==='BLOQUEADO')return'Bloqueado';
   return'—';
 }
 
@@ -764,7 +1174,6 @@ function renderDropdown(filtro){
   itens.forEach(function(cod){
     var st=endStatus[cod]||'LIVRE';
     var item=document.createElement('div');
-    item.className='dd-item';
     item.style.display='flex';
     item.style.alignItems='center';
     item.style.gap='8px';
@@ -815,16 +1224,12 @@ function verificarEndereco(){
   var badge=document.getElementById('end-badge');
   var info=document.getElementById('end-info');
   if(!val){badge.style.display='none';info.textContent='';return;}
-
-  // Normaliza para tentar achar no cache
   var norm=val.replace(/[\s\-]+/g,'');
   var m=norm.match(/^R(\d{2})(\d{3})(\d{1,2}[A-Z]?)$/);
   if(m)norm='R'+m[1]+' '+m[2]+' '+m[3];
   else norm=val;
-
   var st=endStatus[norm];
   if(!st){badge.style.display='none';info.textContent='';return;}
-
   badge.style.display='inline-block';
   if(st==='LIVRE'){
     badge.className='end-livre';badge.textContent='LIVRE';
@@ -835,22 +1240,25 @@ function verificarEndereco(){
   }else if(st==='OCUPADO'){
     badge.className='end-ocupado';badge.textContent='OCUPADO';
     info.style.color='var(--rtxt)';info.textContent='✕ Endereço ocupado — verifique antes de usar';
+  }else if(st==='BLOQUEADO'){
+    badge.className='end-bloqueado';badge.textContent='BLOQUEADO';
+    info.style.color='var(--txt3)';info.textContent='⛔ Endereço bloqueado para uso';
   }
 }
 
 function ss(msg,t){var el=document.getElementById('stbar');
-  el.className='sb '+(t||'info');el.innerHTML='<div class="dot"></div>'+msg;}
+  el.className='sb-status '+(t||'info');el.innerHTML='<div class="dot"></div>'+msg;}
 function fmt(n,t){return String(n).padStart(3,'0')+'/'+String(t).padStart(3,'0');}
 function upd(){
   document.getElementById('s-pal').textContent=document.getElementById('palete').value.trim()||'—';
   document.getElementById('s-end').textContent=document.getElementById('endereco').value.trim()||'—';
-  document.getElementById('s-nped').textContent=new Set(resumo.map(r=>r.pedido)).size;
+  document.getElementById('s-nped').textContent=new Set(resumo.map(function(r){return r.pedido;})).size;
   document.getElementById('s-nvol').textContent=totalVols;
 }
 function renderOut(){
   if(!resumo.length){document.getElementById('out').textContent='Pedidos adicionados aparecerão aqui...';return;}
   var ag={};
-  resumo.forEach(r=>{
+  resumo.forEach(function(r){
     if(!ag[r.pedido])ag[r.pedido]={ini:r.ini,fin:r.fin,tot:r.tot};
     else{ag[r.pedido].ini=Math.min(ag[r.pedido].ini,r.ini);
          ag[r.pedido].fin=Math.max(ag[r.pedido].fin,r.fin);}
@@ -909,7 +1317,7 @@ function finalizar(){
   if(!pal||!end){ss('⚠ Informe palete e endereço.','warn');return;}
   if(!resumo.length){ss('⚠ Nenhum pedido adicionado.','warn');return;}
   var ag={};
-  resumo.forEach(r=>{
+  resumo.forEach(function(r){
     if(!ag[r.pedido])ag[r.pedido]={ini:r.ini,fin:r.fin,tot:r.tot};
     else{ag[r.pedido].ini=Math.min(ag[r.pedido].ini,r.ini);ag[r.pedido].fin=Math.max(ag[r.pedido].fin,r.fin);}
   });
@@ -921,7 +1329,7 @@ function finalizar(){
 }
 function resetar(){
   resumo=[];totalVols=0;
-  ['palete','endereco','pedido','vol_ini','vol_fin','vol_tot'].forEach(id=>document.getElementById(id).value='');
+  ['palete','endereco','pedido','vol_ini','vol_fin','vol_tot'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('out').textContent='Pedidos adicionados aparecerão aqui...';
   document.getElementById('end-badge').style.display='none';
   document.getElementById('end-info').textContent='';
@@ -930,22 +1338,19 @@ function resetar(){
   ss('Pronto para novo palete.','info');upd();document.getElementById('palete').focus();
 }
 upd();
-</script></body></html>"""
-
+</script>
+""" + shell_close() + """
+</body></html>""")
 
 # ══════════════════════════════════════════════════════════════════
 #  PÁGINA: OPERAÇÃO
 # ══════════════════════════════════════════════════════════════════
 @app.get("/operacao", response_class=HTMLResponse)
 def pg_operacao():
-    return r"""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED + r"""
-<title>WMS · Operação</title></head><body>
-""" + nav("oper") + r"""
-<div class="page">
-  <div style="margin-bottom:18px;">
-    <h1 style="font-family:var(--mono);font-size:19px;font-weight:600;color:var(--btxt);">Consulta Rápida</h1>
-    <p style="color:var(--txt3);font-size:12px;margin-top:3px;">Bipe ou digite um endereço ou número de pedido.</p>
-  </div>
+    return ("""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED +
+            """<title>WMS · Operação</title></head><body>""" +
+            shell_open('oper', '🔍', 'var(--bdim)', 'Consulta Rápida', 'Bipe ou digite um endereço ou número de pedido') +
+            r"""
   <div class="sw" style="margin-bottom:12px;">
     <span class="si">⌕</span>
     <input id="q" placeholder="Endereço ou pedido..." autofocus
@@ -968,28 +1373,27 @@ def pg_operacao():
       color:var(--txt3);margin-bottom:6px;">Histórico</div>
     <div class="chips" id="hist"></div>
   </div>
-</div>
 <script>
 var nc=0,ne=0,np=0,nr=0,hist=[];
 var SOK='https://actions.google.com/sounds/v1/alarms/beep_short.ogg';
 var SERR='https://actions.google.com/sounds/v1/cartoon/pop.ogg';
 function beep(u){try{new Audio(u).play();}catch(e){}}
-function flash(c){var el=document.getElementById('q');el.className=c;setTimeout(()=>el.className='',800);}
-function addHist(v){if(!v)return;hist=[...new Set([v,...hist])].slice(0,12);
-  document.getElementById('hist').innerHTML=hist.map(h=>`<div class="chip" onclick="rebuscar('${h}')">${h}</div>`).join('');
+function flash(c){var el=document.getElementById('q');el.className=c;setTimeout(function(){el.className='';},800);}
+function addHist(v){if(!v)return;hist=[...new Set([v].concat(hist))].slice(0,12);
+  document.getElementById('hist').innerHTML=hist.map(function(h){return '<div class="chip" onclick="rebuscar(&quot;'+h+'&quot;)">'+h+'</div>';}).join('');
   nc++;document.getElementById('nc').textContent=nc;}
 function rebuscar(v){document.getElementById('q').value=v;buscar();}
 function buscar(){var v=document.getElementById('q').value.trim().toUpperCase();
   if(!v)return;
-  if(v.match(/^R[0-9]/)||v.startsWith('R '))buscarEndereco();else buscarPedido();}
+  if(v.match(/^R[0-9]/)||v.indexOf('R ')===0)buscarEndereco();else buscarPedido();}
 var _t;document.getElementById('q').addEventListener('input',function(){
   clearTimeout(_t);var v=this.value.trim();
-  if(v.length>=5&&!v.toUpperCase().startsWith('R')){_t=setTimeout(buscar,500);}
+  if(v.length>=5&&v.toUpperCase().indexOf('R')!==0){_t=setTimeout(buscar,500);}
 });
 async function buscarEndereco(){
   var cod=document.getElementById('q').value.trim().toUpperCase();if(!cod)return;
   document.getElementById('out').textContent='Buscando...';
-  document.querySelectorAll('button').forEach(b=>b.disabled=true);
+  document.querySelectorAll('button').forEach(function(b){b.disabled=true;});
   try{
     var r=await fetch('/enderecos/'+encodeURIComponent(cod)+'/detalhes');
     var d=await r.json();
@@ -998,75 +1402,72 @@ async function buscarEndereco(){
       flash('err');beep(SERR);nr++;document.getElementById('nr').textContent=nr;
     }else{
       var txt='ENDEREÇO: '+d.endereco+'\n\n';
-      d.paletes.forEach(p=>{
+      d.paletes.forEach(function(p){
         txt+='PALETE: '+p.palete+'\n'+'─'.repeat(24)+'\n';
         if(!p.pedidos.length)txt+='  (sem pedidos)\n';
-        p.pedidos.forEach(ped=>{txt+='\n  PEDIDO: '+ped.pedido+'\n';
-          ped.volumes.forEach(v=>txt+='    '+v+'\n');});txt+='\n';
+        p.pedidos.forEach(function(ped){txt+='\n  PEDIDO: '+ped.pedido+'\n';
+          ped.volumes.forEach(function(v){txt+='    '+v+'\n';});});txt+='\n';
       });
       document.getElementById('out').textContent=txt;
       flash('ok');beep(SOK);addHist(cod);ne++;document.getElementById('ne').textContent=ne;
     }
   }catch(e){document.getElementById('out').textContent='Erro ao buscar.';
     flash('err');beep(SERR);nr++;document.getElementById('nr').textContent=nr;}
-  document.querySelectorAll('button').forEach(b=>b.disabled=false);
+  document.querySelectorAll('button').forEach(function(b){b.disabled=false;});
   document.getElementById('q').value='';document.getElementById('q').focus();
 }
 async function buscarPedido(){
   var cod=document.getElementById('q').value.trim().toUpperCase();if(!cod)return;
   document.getElementById('out').textContent='Buscando...';
-  document.querySelectorAll('button').forEach(b=>b.disabled=true);
+  document.querySelectorAll('button').forEach(function(b){b.disabled=true;});
   try{
     var r=await fetch('/pedidos/'+encodeURIComponent(cod));var d=await r.json();
     if(d.detail){document.getElementById('out').textContent=d.detail;
       flash('err');beep(SERR);nr++;document.getElementById('nr').textContent=nr;
     }else{
       var txt='PEDIDO: '+d.pedido+'\n\n';
-      d.enderecos.forEach(i=>{
+      d.enderecos.forEach(function(i){
         txt+='ENDEREÇO: '+i.endereco+'\nPALETE:   '+i.palete+'\n'+'─'.repeat(24)+'\n';
-        i.volumes.forEach(v=>txt+='  '+v+'\n');txt+='\n';
+        i.volumes.forEach(function(v){txt+='  '+v+'\n';});txt+='\n';
       });
       document.getElementById('out').textContent=txt;
       flash('ok');beep(SOK);addHist(cod);np++;document.getElementById('np').textContent=np;
     }
   }catch(e){document.getElementById('out').textContent='Erro ao buscar.';
     flash('err');beep(SERR);nr++;document.getElementById('nr').textContent=nr;}
-  document.querySelectorAll('button').forEach(b=>b.disabled=false);
+  document.querySelectorAll('button').forEach(function(b){b.disabled=false;});
   document.getElementById('q').value='';document.getElementById('q').focus();
 }
-</script></body></html>"""
-
+</script>
+""" + shell_close() + """
+</body></html>""")
 
 # ══════════════════════════════════════════════════════════════════
-#  PÁGINA: GERENCIAR VOLUMES (com transferência)
+#  PÁGINA: GERENCIAR VOLUMES
 # ══════════════════════════════════════════════════════════════════
 @app.get("/gerenciar-volumes", response_class=HTMLResponse)
 def pg_gerenciar():
-    return """<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED + """
-<title>WMS · Volumes</title></head><body>
-""" + nav("vol") + """
-<div class="modal-bg" id="modalBg">
-  <div class="modal">
-    <h3>↔ Transferir Volumes</h3>
-    <p style="font-size:12px;color:var(--txt3);margin-bottom:16px;" id="modalInfo">— volumes</p>
-    <div class="f"><label>Novo Palete</label>
-      <input class="fi" id="tPal" placeholder="Ex: PAL002"></div>
-    <div class="f"><label>Novo Endereço</label>
-      <input class="fi" id="tEnd" placeholder="Ex: R07 016 1"></div>
-    <div class="brow" style="margin-top:4px;">
-      <button class="btn ba" onclick="confirmarTransf()">↔ Transferir</button>
-      <button class="btn bgh" onclick="fecharModal()">Cancelar</button>
+    return ("""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED +
+            """<title>WMS · Volumes</title></head><body>""" +
+            shell_open('vol', '🗂️', 'var(--adim)', 'Gerenciar Volumes', 'Visualize, transfira e apague volumes') +
+            r"""
+  <div class="modal-bg" id="modalBg">
+    <div class="modal">
+      <h3>↔ Transferir Volumes</h3>
+      <p style="font-size:12px;color:var(--txt3);margin-bottom:16px;" id="modalInfo">— volumes</p>
+      <div class="f"><label>Novo Palete</label>
+        <input class="fi" id="tPal" placeholder="Ex: PAL002"></div>
+      <div class="f"><label>Novo Endereço</label>
+        <input class="fi" id="tEnd" placeholder="Ex: R07 016 1"></div>
+      <div class="brow" style="margin-top:4px;">
+        <button class="btn ba" onclick="confirmarTransf()">↔ Transferir</button>
+        <button class="btn bgh" onclick="fecharModal()">Cancelar</button>
+      </div>
+      <div id="modalMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
     </div>
-    <div id="modalMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
   </div>
-</div>
-<div class="pw">
   <div style="display:flex;align-items:center;justify-content:space-between;
-    flex-wrap:wrap;gap:10px;margin-bottom:18px;">
-    <div>
-      <h1 style="font-family:var(--mono);font-size:19px;font-weight:600;color:var(--atxt);">Gerenciar Volumes</h1>
-      <p style="color:var(--txt3);font-size:12px;margin-top:3px;">Visualize, transfira e apague volumes.</p>
-    </div>
+    flex-wrap:wrap;gap:10px;margin-bottom:16px;">
     <div class="brow">
       <button class="btn bgh" onclick="carregar()">↺ Atualizar</button>
       <button class="btn bgh" onclick="selAll()">☑ Todos</button>
@@ -1077,21 +1478,22 @@ def pg_gerenciar():
   </div>
   <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
     <input type="text" id="filtro" placeholder="Filtrar por pedido, palete ou endereço..."
-      style="flex:1;min-width:180px;padding:8px 12px;background:var(--s1);color:var(--txt);
+      style="flex:1;min-width:180px;padding:9px 13px;background:var(--s1);color:var(--txt);
         border:1px solid var(--br);border-radius:var(--r);font-size:13px;outline:none;"
       oninput="filtrar()">
     <span id="info" style="font-size:12px;color:var(--txt3);white-space:nowrap;">—</span>
   </div>
-  <div class="tw">
-    <table>
-      <thead><tr>
-        <th style="width:32px"><input type="checkbox" id="chkAll" onchange="toggleAll(this)"></th>
-        <th>ID</th><th>Pedido</th><th>Volume</th><th>Palete</th><th>Endereço</th><th>Ação</th>
-      </tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
+  <div class="card" style="margin-bottom:0;">
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th style="width:32px"><input type="checkbox" id="chkAll" onchange="toggleAll(this)"></th>
+          <th>ID</th><th>Pedido</th><th>Volume</th><th>Palete</th><th>Endereço</th><th>Ação</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
   </div>
-</div>
 <script>
 var dados=[];
 async function carregar(){
@@ -1101,29 +1503,29 @@ async function carregar(){
 }
 function filtrar(){
   var q=document.getElementById('filtro').value.trim().toLowerCase();
-  var fd=q?dados.filter(d=>String(d.numero_pedido).toLowerCase().includes(q)||
-    d.palete_codigo.toLowerCase().includes(q)||(d.endereco_codigo||'').toLowerCase().includes(q)):dados;
+  var fd=q?dados.filter(function(d){return String(d.numero_pedido).toLowerCase().indexOf(q)!==-1||
+    d.palete_codigo.toLowerCase().indexOf(q)!==-1||(d.endereco_codigo||'').toLowerCase().indexOf(q)!==-1;}):dados;
   var tb=document.getElementById('tbody');
   if(!fd.length){tb.innerHTML='<tr><td colspan="7" style="color:var(--txt3);text-align:center;padding:20px;">Nenhum registro.</td></tr>';
     document.getElementById('info').textContent='0 registros';return;}
-  tb.innerHTML=fd.map(d=>{
+  tb.innerHTML=fd.map(function(d){
     var vol=String(d.volume_atual).padStart(3,'0')+'/'+String(d.volume_total).padStart(3,'0');
-    return `<tr>
-      <td><input type="checkbox" class="chk" value="${d.id}"></td>
-      <td style="color:var(--txt3);font-family:var(--mono);font-size:11px;">${d.id}</td>
-      <td style="font-family:var(--mono);font-weight:600;">${d.numero_pedido}</td>
-      <td><span class="bk bk-blue">${vol}</span></td>
-      <td style="color:var(--gtxt);font-family:var(--mono);">${d.palete_codigo}</td>
-      <td style="color:var(--txt3);">${d.endereco_codigo||'—'}</td>
-      <td><button class="btn bd" style="padding:4px 9px;font-size:11px;" onclick="apagarUm(${d.id})">Apagar</button></td>
-    </tr>`;
+    return '<tr>'+
+      '<td><input type="checkbox" class="chk" value="'+d.id+'"></td>'+
+      '<td style="color:var(--txt3);font-family:var(--mono);font-size:11px;">'+d.id+'</td>'+
+      '<td style="font-family:var(--mono);font-weight:600;">'+d.numero_pedido+'</td>'+
+      '<td><span class="bk bk-blue">'+vol+'</span></td>'+
+      '<td style="color:var(--gtxt);font-family:var(--mono);">'+d.palete_codigo+'</td>'+
+      '<td style="color:var(--txt3);">'+(d.endereco_codigo||'—')+'</td>'+
+      '<td><button class="btn bd" style="padding:4px 9px;font-size:11px;" onclick="apagarUm('+d.id+')">Apagar</button></td>'+
+      '</tr>';
   }).join('');
   document.getElementById('info').textContent=fd.length+' registro(s)';
 }
-function getIds(){return Array.from(document.querySelectorAll('.chk:checked')).map(c=>parseInt(c.value));}
-function selAll(){document.querySelectorAll('.chk').forEach(c=>c.checked=true);}
-function desSel(){document.querySelectorAll('.chk').forEach(c=>c.checked=false);}
-function toggleAll(el){document.querySelectorAll('.chk').forEach(c=>c.checked=el.checked);}
+function getIds(){return Array.from(document.querySelectorAll('.chk:checked')).map(function(c){return parseInt(c.value);});}
+function selAll(){document.querySelectorAll('.chk').forEach(function(c){c.checked=true;});}
+function desSel(){document.querySelectorAll('.chk').forEach(function(c){c.checked=false;});}
+function toggleAll(el){document.querySelectorAll('.chk').forEach(function(c){c.checked=el.checked;});}
 async function apagarUm(id){
   if(!confirm('Apagar este volume?'))return;
   await fetch('/pedidos-volume/'+id,{method:'DELETE',headers:authHeaders()});
@@ -1133,7 +1535,7 @@ async function apagarSel(){
   var ids=getIds();if(!ids.length){alert('Selecione ao menos um volume.');return;}
   if(!confirm('Apagar '+ids.length+' volume(s)?'))return;
   var r=await fetch('/pedidos-volume/deletar-varios',{method:'POST',
-    headers:authHeaders(),body:JSON.stringify({ids})});
+    headers:authHeaders(),body:JSON.stringify({ids:ids})});
   var d=await r.json();toast(d.removidos+' volume(s) apagados.');carregar();
 }
 function abrirTransf(){
@@ -1164,79 +1566,73 @@ async function confirmarTransf(){
   }catch(e){msg.style.color='var(--rtxt)';msg.textContent='Erro de conexão.';}
 }
 carregar();
-</script></body></html>"""
-
+</script>
+""" + shell_close() + """
+</body></html>""")
 
 # ══════════════════════════════════════════════════════════════════
-#  PÁGINA: HISTÓRICO — com painel de filtros e exportação Excel
+#  PÁGINA: HISTÓRICO — com filtros e exportação Excel/CSV
 # ══════════════════════════════════════════════════════════════════
 @app.get("/historico", response_class=HTMLResponse)
 def pg_historico():
-    return r"""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED + r"""
-<title>WMS · Histórico</title>
+    return ("""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED +
+            """<title>WMS · Histórico</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/SheetJS/0.18.5/xlsx.full.min.js"></script>
-</head><body>
-""" + nav("hist") + r"""
-<div class="modal-bg" id="filtroModalBg">
-  <div class="modal" style="max-width:480px;">
-    <h3>🔧 Filtros do Histórico</h3>
-    <div class="f"><label>Ação</label>
-      <select id="m-filtroAcao" style="width:100%;padding:11px 13px;background:var(--bg);
-        color:var(--txt);border:1px solid var(--br);border-radius:var(--r);
-        font-family:var(--mono);font-size:14px;outline:none;">
-        <option value="">Todas as ações</option>
-        <option value="CADASTRO">Cadastros</option>
-        <option value="EXCLUSAO">Exclusões</option>
-        <option value="TRANSFERENCIA">Transferências</option>
-        <option value="STATUS_END">Status endereço</option>
-      </select>
-    </div>
-    <div class="f"><label>Buscar (pedido, usuário, endereço...)</label>
-      <input class="fi" id="m-filtroTxt" placeholder="Digite para filtrar...">
-    </div>
-    <div class="brow" style="margin-top:6px;">
-      <button class="btn bg" onclick="aplicarFiltrosModal()">✓ Aplicar Filtros</button>
-      <button class="btn bgh" onclick="limparFiltrosModal()">↺ Limpar</button>
-    </div>
-    <div class="divider"></div>
-    <button class="btn bb bfull" onclick="exportarExcel()">⬇ Baixar Relatório (Excel)</button>
-    <div style="font-size:11px;color:var(--txt3);margin-top:8px;text-align:center;">
-      O relatório respeita os filtros aplicados acima.
-    </div>
-    <div class="brow" style="margin-top:14px;">
-      <button class="btn bgh bfull" onclick="fecharFiltroModal()">Fechar</button>
+</head><body>""" +
+            shell_open('hist', '📋', 'var(--pdim)', 'Histórico de Ações', 'Auditoria — cadastros, exclusões, transferências e status') +
+            r"""
+  <div class="modal-bg" id="filtroModalBg">
+    <div class="modal" style="max-width:480px;">
+      <h3>🔧 Filtros do Histórico</h3>
+      <div class="f"><label>Ação</label>
+        <select id="m-filtroAcao" style="width:100%;padding:11px 13px;background:var(--bg);
+          color:var(--txt);border:1px solid var(--br);border-radius:var(--r);
+          font-family:var(--mono);font-size:14px;outline:none;">
+          <option value="">Todas as ações</option>
+          <option value="CADASTRO">Cadastros</option>
+          <option value="EXCLUSAO">Exclusões</option>
+          <option value="TRANSFERENCIA">Transferências</option>
+          <option value="STATUS_END">Status endereço</option>
+        </select>
+      </div>
+      <div class="f"><label>Buscar (pedido, usuário, endereço...)</label>
+        <input class="fi" id="m-filtroTxt" placeholder="Digite para filtrar...">
+      </div>
+      <div class="brow" style="margin-top:6px;">
+        <button class="btn bg" onclick="aplicarFiltrosModal()">✓ Aplicar Filtros</button>
+        <button class="btn bgh" onclick="limparFiltrosModal()">↺ Limpar</button>
+      </div>
+      <div class="divider"></div>
+      <button class="btn bb bfull" onclick="exportarExcel()">⬇ Baixar Relatório (Excel)</button>
+      <div style="font-size:11px;color:var(--txt3);margin-top:8px;text-align:center;">
+        O relatório respeita os filtros aplicados acima.
+      </div>
+      <div class="brow" style="margin-top:14px;">
+        <button class="btn bgh bfull" onclick="fecharFiltroModal()">Fechar</button>
+      </div>
     </div>
   </div>
-</div>
 
-<div class="pw">
-  <div style="display:flex;align-items:center;justify-content:space-between;
-    flex-wrap:wrap;gap:10px;margin-bottom:18px;">
-    <div>
-      <h1 style="font-family:var(--mono);font-size:19px;font-weight:600;color:var(--ptxt);">Histórico de Ações</h1>
-      <p style="color:var(--txt3);font-size:12px;margin-top:3px;">Auditoria — cadastros, exclusões, transferências e status.</p>
-    </div>
-    <div class="brow" style="flex-wrap:wrap;gap:8px;">
-      <button class="btn bgh" onclick="carregar()">↺ Atualizar</button>
-      <button class="btn ba" id="btnFiltroIcon" onclick="abrirFiltroModal()" title="Filtros e exportação">
-        🔧 Filtros / Exportar
-      </button>
-      <span id="info" style="font-size:12px;color:var(--txt3);white-space:nowrap;align-self:center;">—</span>
-    </div>
+  <div style="display:flex;align-items:center;justify-content:flex-end;
+    flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+    <button class="btn bgh" onclick="carregar()">↺ Atualizar</button>
+    <button class="btn ba" onclick="abrirFiltroModal()">🔧 Filtros / Exportar</button>
+    <span id="info" style="font-size:12px;color:var(--txt3);white-space:nowrap;align-self:center;">—</span>
   </div>
   <div id="filtroAtivoTag" style="display:none;margin-bottom:12px;font-size:11px;
     color:var(--atxt);background:var(--adim);border:1px solid var(--amber);
     border-radius:var(--r);padding:6px 12px;"></div>
-  <div class="tw">
-    <table>
-      <thead><tr>
-        <th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Pedido</th>
-        <th>Volume</th><th>Palete</th><th>De</th><th>Para</th><th>Detalhe</th>
-      </tr></thead>
-      <tbody id="tbody"></tbody>
-    </table>
+  <div class="card" style="margin-bottom:0;">
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Pedido</th>
+          <th>Volume</th><th>Palete</th><th>De</th><th>Para</th><th>Detalhe</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
   </div>
-</div>
 <script>
 var dados=[];
 var filtroAcao='';
@@ -1250,295 +1646,320 @@ async function carregar(){
     dados=await r.json();filtrar();
   }catch(e){document.getElementById('tbody').innerHTML='<tr><td colspan="9" style="color:var(--rtxt);text-align:center;padding:20px;">Erro ao carregar.</td></tr>';}
 }
-
 function getFiltrados(){
-  return dados.filter(d=>{
+  return dados.filter(function(d){
     if(filtroAcao&&d.acao!==filtroAcao)return false;
     if(filtroTxt){
       var s=(d.numero_pedido+d.usuario_nome+d.palete_codigo+d.endereco_de+d.endereco_para+d.detalhe_extra).toLowerCase();
-      if(!s.includes(filtroTxt.toLowerCase()))return false;
+      if(s.indexOf(filtroTxt.toLowerCase())===-1)return false;
     }
     return true;
   });
 }
-
 function filtrar(){
   var fd=getFiltrados();
   var tb=document.getElementById('tbody');
   if(!fd.length){tb.innerHTML='<tr><td colspan="9" style="color:var(--txt3);text-align:center;padding:20px;">Nenhum registro.</td></tr>';
     document.getElementById('info').textContent='0 registros';return;}
   var cor={'CADASTRO':'bk-green','EXCLUSAO':'bk-red','TRANSFERENCIA':'bk-amber','STATUS_END':'bk-blue'};
-  tb.innerHTML=fd.map(d=>{
+  tb.innerHTML=fd.map(function(d){
     var vol=d.volume_atual!=null?String(d.volume_atual).padStart(3,'0')+'/'+String(d.volume_total).padStart(3,'0'):'—';
-    return `<tr>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--txt3);white-space:nowrap;">${d.criado_em}</td>
-      <td style="font-weight:500;font-size:12px;">${d.usuario_nome}</td>
-      <td><span class="bk ${cor[d.acao]||'bk-blue'}">${d.acao}</span></td>
-      <td style="font-family:var(--mono);">${d.numero_pedido}</td>
-      <td><span class="bk bk-blue">${vol}</span></td>
-      <td style="color:var(--gtxt);font-family:var(--mono);">${d.palete_codigo}</td>
-      <td style="color:var(--txt3);font-family:var(--mono);font-size:11px;">${d.endereco_de}</td>
-      <td style="color:var(--gtxt);font-family:var(--mono);font-size:11px;">${d.endereco_para}</td>
-      <td style="color:var(--txt3);font-size:11px;">${d.detalhe_extra}</td>
-    </tr>`;
+    return '<tr>'+
+      '<td style="font-family:var(--mono);font-size:11px;color:var(--txt3);white-space:nowrap;">'+d.criado_em+'</td>'+
+      '<td style="font-weight:500;font-size:12px;">'+d.usuario_nome+'</td>'+
+      '<td><span class="bk '+(cor[d.acao]||'bk-blue')+'">'+d.acao+'</span></td>'+
+      '<td style="font-family:var(--mono);">'+d.numero_pedido+'</td>'+
+      '<td><span class="bk bk-blue">'+vol+'</span></td>'+
+      '<td style="color:var(--gtxt);font-family:var(--mono);">'+d.palete_codigo+'</td>'+
+      '<td style="color:var(--txt3);font-family:var(--mono);font-size:11px;">'+d.endereco_de+'</td>'+
+      '<td style="color:var(--gtxt);font-family:var(--mono);font-size:11px;">'+d.endereco_para+'</td>'+
+      '<td style="color:var(--txt3);font-size:11px;">'+d.detalhe_extra+'</td>'+
+      '</tr>';
   }).join('');
   document.getElementById('info').textContent=fd.length+' registro(s)';
 }
-
 function abrirFiltroModal(){
   document.getElementById('m-filtroAcao').value=filtroAcao;
   document.getElementById('m-filtroTxt').value=filtroTxt;
   document.getElementById('filtroModalBg').classList.add('open');
 }
-function fecharFiltroModal(){
-  document.getElementById('filtroModalBg').classList.remove('open');
-}
+function fecharFiltroModal(){document.getElementById('filtroModalBg').classList.remove('open');}
 function aplicarFiltrosModal(){
   filtroAcao=document.getElementById('m-filtroAcao').value;
   filtroTxt=document.getElementById('m-filtroTxt').value.trim();
-  filtrar();
-  atualizarTagFiltro();
-  fecharFiltroModal();
-  toast('Filtros aplicados.');
+  filtrar();atualizarTagFiltro();fecharFiltroModal();toast('Filtros aplicados.');
 }
 function limparFiltrosModal(){
   document.getElementById('m-filtroAcao').value='';
   document.getElementById('m-filtroTxt').value='';
   filtroAcao='';filtroTxt='';
-  filtrar();
-  atualizarTagFiltro();
-  toast('Filtros limpos.');
+  filtrar();atualizarTagFiltro();toast('Filtros limpos.');
 }
 function atualizarTagFiltro(){
   var tag=document.getElementById('filtroAtivoTag');
   var partes=[];
   if(filtroAcao)partes.push('Ação: '+filtroAcao);
   if(filtroTxt)partes.push('Busca: "'+filtroTxt+'"');
-  if(partes.length){
-    tag.style.display='block';
-    tag.textContent='🔧 Filtro ativo — '+partes.join('  ·  ');
-  }else{
-    tag.style.display='none';
-  }
+  if(partes.length){tag.style.display='block';tag.textContent='🔧 Filtro ativo — '+partes.join('  ·  ');}
+  else{tag.style.display='none';}
 }
-
 function exportarExcel(){
   filtroAcao=document.getElementById('m-filtroAcao').value;
   filtroTxt=document.getElementById('m-filtroTxt').value.trim();
   var fd=getFiltrados();
   if(!fd.length){toast('Nenhum registro para exportar com esse filtro.','err');return;}
-
   var linhas=fd.map(function(d){
     var vol=d.volume_atual!=null?String(d.volume_atual).padStart(3,'0')+'/'+String(d.volume_total).padStart(3,'0'):'—';
-    return {
-      'Data/Hora': d.criado_em,
-      'Usuário': d.usuario_nome,
-      'Ação': d.acao,
-      'Pedido': d.numero_pedido,
-      'Volume': vol,
-      'Palete': d.palete_codigo,
-      'Endereço De': d.endereco_de,
-      'Endereço Para': d.endereco_para,
-      'Detalhe': d.detalhe_extra
-    };
+    return {'Data/Hora':d.criado_em,'Usuário':d.usuario_nome,'Ação':d.acao,'Pedido':d.numero_pedido,
+      'Volume':vol,'Palete':d.palete_codigo,'Endereço De':d.endereco_de,'Endereço Para':d.endereco_para,
+      'Detalhe':d.detalhe_extra};
   });
-
   var agora=new Date();
   var dataStr=agora.toLocaleDateString('pt-BR').replace(/\//g,'-');
   var horaStr=agora.toLocaleTimeString('pt-BR').replace(/:/g,'-');
-
-  if(typeof XLSX==='undefined'){
-    // CDN não carregou — usa fallback CSV (abre no Excel também)
-    exportarCSVFallback(linhas,dataStr,horaStr);
-    return;
-  }
-
+  if(typeof XLSX==='undefined'){exportarCSVFallback(linhas,dataStr,horaStr);return;}
   try{
     var ws=XLSX.utils.json_to_sheet(linhas);
     ws['!cols']=[{wch:18},{wch:18},{wch:14},{wch:12},{wch:10},{wch:10},{wch:14},{wch:14},{wch:30}];
     var wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,'Historico');
-    var nomeArquivo='historico_tcruzloc_'+dataStr+'_'+horaStr+'.xlsx';
-    XLSX.writeFile(wb,nomeArquivo);
-    filtrar();
-    atualizarTagFiltro();
+    XLSX.writeFile(wb,'historico_tcruzloc_'+dataStr+'_'+horaStr+'.xlsx');
+    filtrar();atualizarTagFiltro();
     toast('✓ Relatório baixado: '+fd.length+' registro(s)');
-  }catch(e){
-    exportarCSVFallback(linhas,dataStr,horaStr);
-  }
+  }catch(e){exportarCSVFallback(linhas,dataStr,horaStr);}
 }
-
 function exportarCSVFallback(linhas,dataStr,horaStr){
-  var cabecalho=Object.keys(linhas[0]);
-  var csvRows=[cabecalho.join(';')];
-  linhas.forEach(function(l){
-    csvRows.push(cabecalho.map(function(c){
-      var v=(l[c]==null?'':String(l[c])).replace(/;/g,',');
-      return v;
-    }).join(';'));
-  });
-  var csv='\ufeff'+csvRows.join('\n'); // BOM para acentos abrirem certo no Excel
+  var cab=Object.keys(linhas[0]);
+  var rows=[cab.join(';')];
+  linhas.forEach(function(l){rows.push(cab.map(function(c){return (l[c]==null?'':String(l[c])).replace(/;/g,',');}).join(';'));});
+  var csv='\ufeff'+rows.join('\n');
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a');
-  a.href=url;
-  a.download='historico_tcruzloc_'+dataStr+'_'+horaStr+'.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  filtrar();
-  atualizarTagFiltro();
+  a.href=url;a.download='historico_tcruzloc_'+dataStr+'_'+horaStr+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  filtrar();atualizarTagFiltro();
   toast('✓ Relatório baixado em CSV (Excel indisponível): '+linhas.length+' registro(s)','ok');
 }
 carregar();
-</script></body></html>"""
-
+</script>
+""" + shell_close() + """
+</body></html>""")
 
 # ══════════════════════════════════════════════════════════════════
-#  PÁGINA: ENDEREÇOS — gerenciar status manualmente
+#  PÁGINA: ENDEREÇOS — gerenciar status manualmente (grid simples)
 # ══════════════════════════════════════════════════════════════════
 @app.get("/enderecos-page", response_class=HTMLResponse)
 def pg_enderecos():
-    return """<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED + """
-<title>WMS · Endereços</title></head><body>
-""" + nav("end") + """
-<div class="pw">
-  <div style="display:flex;align-items:center;justify-content:space-between;
-    flex-wrap:wrap;gap:10px;margin-bottom:18px;">
-    <div>
-      <h1 style="font-family:var(--mono);font-size:19px;font-weight:600;color:var(--btxt);">Endereços</h1>
-      <p style="color:var(--txt3);font-size:12px;margin-top:3px;">
-        Gerencie o status de ocupação de cada endereço do armazém.</p>
-    </div>
-    <button class="btn bgh" onclick="carregar()">↺ Atualizar</button>
+    return ("""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED +
+            """<title>WMS · Endereços</title></head><body>""" +
+            shell_open('end', '🏷️', 'var(--bdim)', 'Endereços', 'Gerencie o status de ocupação de cada endereço') +
+            r"""
+  <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
+    <button class="btn bgh" onclick="setFiltro('TODOS')">Todos</button>
+    <button class="btn bgh" onclick="setFiltro('LIVRE')">Livres</button>
+    <button class="btn bgh" onclick="setFiltro('PARCIAL')">Parciais</button>
+    <button class="btn bgh" onclick="setFiltro('OCUPADO')">Ocupados</button>
+    <button class="btn bgh" onclick="setFiltro('BLOQUEADO')">Bloqueados</button>
+    <button class="btn bgh" style="margin-left:auto;" onclick="carregar()">↺ Atualizar</button>
   </div>
-
- <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
-  <button class="btn bgh" onclick="setFiltro('TODOS')">Todos</button>
-  <button class="btn bgh" onclick="setFiltro('LIVRE')">Livres</button>
-  <button class="btn bgh" onclick="setFiltro('PARCIAL')">Parciais</button>
-  <button class="btn bgh" onclick="setFiltro('OCUPADO')">Ocupados</button>
-</div>
-
-<div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
-    <div class="metric" style="flex:1;min-width:110px;">
-      <div class="ml">Livres</div>
-      <div class="mv" id="cnt-l" style="color:var(--gtxt);">—</div>
-    </div>
-    <div class="metric" style="flex:1;min-width:110px;">
-      <div class="ml">Parciais</div>
-      <div class="mv" id="cnt-p" style="color:var(--atxt);">—</div>
-    </div>
-    <div class="metric" style="flex:1;min-width:110px;">
-      <div class="ml">Ocupados</div>
-      <div class="mv" id="cnt-o" style="color:var(--rtxt);">—</div>
-    </div>
-    <div class="metric" style="flex:1;min-width:110px;">
-      <div class="ml">Total</div>
-      <div class="mv" id="cnt-t" style="color:var(--txt);">—</div>
-    </div>
+  <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+    <div class="metric-card" style="flex:1;min-width:110px;"><div><div class="num" id="cnt-l" style="color:var(--gtxt);">—</div><div class="lbl">Livres</div></div></div>
+    <div class="metric-card" style="flex:1;min-width:110px;"><div><div class="num" id="cnt-p" style="color:var(--atxt);">—</div><div class="lbl">Parciais</div></div></div>
+    <div class="metric-card" style="flex:1;min-width:110px;"><div><div class="num" id="cnt-o" style="color:var(--rtxt);">—</div><div class="lbl">Ocupados</div></div></div>
+    <div class="metric-card" style="flex:1;min-width:110px;"><div><div class="num" id="cnt-t" style="color:var(--txt);">—</div><div class="lbl">Total</div></div></div>
   </div>
-
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;"
-    id="grid"></div>
-</div>
-
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;" id="grid"></div>
 <script>
 var enderecos=[];
 var filtroAtual='TODOS';
-
-function setFiltro(status){
-  filtroAtual=status;
-  renderGrid();
-}
-
+function setFiltro(s){filtroAtual=s;renderGrid();}
 async function carregar(){
   document.getElementById('grid').innerHTML='<p style="color:var(--txt3);padding:10px;">Carregando...</p>';
   try{
     var r=await fetch('/enderecos');
     enderecos=await r.json();
-    renderGrid();
-    atualizarContadores();
+    renderGrid();atualizarContadores();
   }catch(e){document.getElementById('grid').innerHTML='<p style="color:var(--rtxt);">Erro ao carregar.</p>';}
 }
-
 function corStatus(s){
-  if(s==='LIVRE')   return {bg:'var(--gdim)',border:'var(--green)',txt:'var(--gtxt)',cls:'end-livre'};
-  if(s==='PARCIAL') return {bg:'var(--adim)',border:'var(--amber)',txt:'var(--atxt)',cls:'end-parcial'};
-  if(s==='OCUPADO') return {bg:'var(--rdim)',border:'var(--red)',  txt:'var(--rtxt)',cls:'end-ocupado'};
-  return {bg:'var(--s2)',border:'var(--br)',txt:'var(--txt3)',cls:''};
+  if(s==='LIVRE')return{border:'var(--green)',cls:'end-livre'};
+  if(s==='PARCIAL')return{border:'var(--amber)',cls:'end-parcial'};
+  if(s==='OCUPADO')return{border:'var(--red)',cls:'end-ocupado'};
+  if(s==='BLOQUEADO')return{border:'var(--br2)',cls:'end-bloqueado'};
+  return{border:'var(--br)',cls:''};
 }
-
 function renderGrid(){
-  var g=document.getElementById('grid');
-  g.innerHTML='';
-  var lista = enderecos;
-
-if(filtroAtual !== 'TODOS'){
-  lista = enderecos.filter(e => (e.status_ocupacao || 'LIVRE') === filtroAtual);
-}
-
-if(!lista.length){
-  g.innerHTML='<p style="color:var(--txt3);padding:10px;">Nenhum endereço encontrado nesse filtro.</p>';
-  return;
-}
-
-lista.forEach(function(e){
+  var g=document.getElementById('grid');g.innerHTML='';
+  var lista=enderecos;
+  if(filtroAtual!=='TODOS')lista=enderecos.filter(function(e){return (e.status_ocupacao||'LIVRE')===filtroAtual;});
+  if(!lista.length){g.innerHTML='<p style="color:var(--txt3);padding:10px;">Nenhum endereço encontrado nesse filtro.</p>';return;}
+  lista.forEach(function(e){
     var st=e.status_ocupacao||'LIVRE';
     var c=corStatus(st);
     var div=document.createElement('div');
     div.style.cssText='background:var(--s1);border:1px solid '+c.border+';border-radius:var(--rl);padding:16px;';
-    div.innerHTML=`
-      <div style="font-family:var(--mono);font-size:14px;font-weight:600;
-        color:var(--txt);margin-bottom:8px;">${e.codigo}</div>
-      <span class="bk ${c.cls}" style="margin-bottom:12px;display:inline-block;">${st}</span>
-      <div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">
-        <button onclick="setStatus('${e.codigo}','LIVRE')"
-          class="btn" style="padding:6px;font-size:11px;
-          background:${st==='LIVRE'?'var(--green)':'var(--gdim)'};
-          color:${st==='LIVRE'?'#000':'var(--gtxt)'};border:1px solid var(--green);">
-          ● Livre</button>
-        <button onclick="setStatus('${e.codigo}','PARCIAL')"
-          class="btn" style="padding:6px;font-size:11px;
-          background:${st==='PARCIAL'?'var(--amber)':'var(--adim)'};
-          color:${st==='PARCIAL'?'#000':'var(--atxt)'};border:1px solid var(--amber);">
-          ● Parcial</button>
-        <button onclick="setStatus('${e.codigo}','OCUPADO')"
-          class="btn" style="padding:6px;font-size:11px;
-          background:${st==='OCUPADO'?'var(--red)':'var(--rdim)'};
-          color:${st==='OCUPADO'?'#fff':'var(--rtxt)'};border:1px solid var(--red);">
-          ● Ocupado</button>
-      </div>`;
+    div.innerHTML='<div style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--txt);margin-bottom:8px;">'+e.codigo+'</div>'+
+      '<span class="bk '+c.cls+'" style="margin-bottom:12px;display:inline-block;">'+st+'</span>'+
+      '<div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">'+
+      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;LIVRE&quot;)" class="btn" style="padding:6px;font-size:11px;'+
+      'background:'+(st==='LIVRE'?'var(--green)':'var(--gdim)')+';color:'+(st==='LIVRE'?'#04130a':'var(--gtxt)')+';border:1px solid var(--green);">● Livre</button>'+
+      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;PARCIAL&quot;)" class="btn" style="padding:6px;font-size:11px;'+
+      'background:'+(st==='PARCIAL'?'var(--amber)':'var(--adim)')+';color:'+(st==='PARCIAL'?'#1a1200':'var(--atxt)')+';border:1px solid var(--amber);">● Parcial</button>'+
+      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;OCUPADO&quot;)" class="btn" style="padding:6px;font-size:11px;'+
+      'background:'+(st==='OCUPADO'?'var(--red)':'var(--rdim)')+';color:'+(st==='OCUPADO'?'#fff':'var(--rtxt)')+';border:1px solid var(--red);">● Ocupado</button>'+
+      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;BLOQUEADO&quot;)" class="btn" style="padding:6px;font-size:11px;'+
+      'background:'+(st==='BLOQUEADO'?'var(--br2)':'var(--s2)')+';color:var(--txt3);border:1px solid var(--br2);">● Bloqueado</button>'+
+      '</div>';
     g.appendChild(div);
   });
 }
-
 function atualizarContadores(){
-  var l=enderecos.filter(e=>(e.status_ocupacao||'LIVRE')==='LIVRE').length;
-  var p=enderecos.filter(e=>e.status_ocupacao==='PARCIAL').length;
-  var o=enderecos.filter(e=>e.status_ocupacao==='OCUPADO').length;
-  document.getElementById('cnt-l').textContent=l;
-  document.getElementById('cnt-p').textContent=p;
-  document.getElementById('cnt-o').textContent=o;
+  document.getElementById('cnt-l').textContent=enderecos.filter(function(e){return (e.status_ocupacao||'LIVRE')==='LIVRE';}).length;
+  document.getElementById('cnt-p').textContent=enderecos.filter(function(e){return e.status_ocupacao==='PARCIAL';}).length;
+  document.getElementById('cnt-o').textContent=enderecos.filter(function(e){return e.status_ocupacao==='OCUPADO';}).length;
   document.getElementById('cnt-t').textContent=enderecos.length;
 }
-
-async function setStatus(codigo, status){
+async function setStatus(codigo,status){
   try{
     var r=await fetch('/enderecos/'+encodeURIComponent(codigo)+'/status',{
-      method:'PATCH',headers:authHeaders(),
-      body:JSON.stringify({status_ocupacao:status})});
+      method:'PATCH',headers:authHeaders(),body:JSON.stringify({status_ocupacao:status})});
     var d=await r.json();
     if(d.detail){toast(d.detail,'err');return;}
-    var idx=enderecos.findIndex(e=>e.codigo===codigo);
+    var idx=enderecos.findIndex(function(e){return e.codigo===codigo;});
     if(idx>=0)enderecos[idx].status_ocupacao=status;
     renderGrid();atualizarContadores();
     toast('✓ '+codigo+' marcado como '+status);
   }catch(e){toast('Erro de conexão','err');}
 }
 carregar();
-</script></body></html>"""
+</script>
+""" + shell_close() + """
+</body></html>""")
+
+# ══════════════════════════════════════════════════════════════════
+#  PÁGINA: USUÁRIOS (admin) — listar, ativar/desativar
+# ══════════════════════════════════════════════════════════════════
+@app.get("/usuarios", response_class=HTMLResponse)
+def pg_usuarios():
+    return ("""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED +
+            """<title>WMS · Usuários</title></head><body>""" +
+            shell_open('users', '👥', 'var(--bdim)', 'Usuários', 'Gerencie quem tem acesso ao sistema (somente administradores)') +
+            r"""
+  <div class="card">
+    <div class="ct">Criar Novo Usuário</div>
+    <div class="g2">
+      <div class="f"><label>Nome completo</label><input class="fi" id="nNome" placeholder="Ex: João Silva"></div>
+      <div class="f"><label>Login</label><input class="fi" id="nLogin" placeholder="Ex: joao.silva"></div>
+    </div>
+    <div class="g2">
+      <div class="f"><label>Senha</label><input class="fi" id="nSenha" type="password" placeholder="Mínimo 4 caracteres"></div>
+      <div class="f"><label>Papel</label>
+        <select id="nPapel" style="width:100%;padding:11px 13px;background:var(--bg);color:var(--txt);
+          border:1px solid var(--br);border-radius:var(--r);font-size:14px;outline:none;">
+          <option value="OPERADOR">Operador</option>
+          <option value="ADMIN">Administrador</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn bg" onclick="criarUsuario()">✓ Criar Usuário</button>
+    <div id="nMsg" style="font-size:12px;margin-top:10px;min-height:18px;"></div>
+  </div>
+
+  <div class="card" style="margin-bottom:0;">
+    <div class="ct">Usuários do Sistema</div>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>E-mail</th><th>Status</th><th>Ação</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+<script>
+async function carregar(){
+  document.getElementById('tbody').innerHTML='<tr><td colspan="6" style="color:var(--txt3);text-align:center;padding:20px;">Carregando...</td></tr>';
+  try{
+    var r=await fetch('/usuarios-api',{headers:authHeaders()});
+    if(r.status===403){document.getElementById('tbody').innerHTML='<tr><td colspan="6" style="color:var(--rtxt);text-align:center;padding:20px;">Acesso restrito a administradores.</td></tr>';return;}
+    var d=await r.json();
+    var tb=document.getElementById('tbody');
+    tb.innerHTML=d.map(function(u){
+      return '<tr>'+
+        '<td style="font-weight:600;">'+u.nome+'</td>'+
+        '<td style="font-family:var(--mono);color:var(--txt3);">'+u.login+'</td>'+
+        '<td><span class="bk '+(u.papel==='ADMIN'?'bk-purple':'bk-blue')+'">'+u.papel+'</span></td>'+
+        '<td style="color:var(--txt3);font-size:11.5px;">'+(u.email||'—')+'</td>'+
+        '<td><span class="bk '+(u.ativo?'bk-green':'bk-red')+'">'+(u.ativo?'ATIVO':'INATIVO')+'</span></td>'+
+        '<td><button class="btn '+(u.ativo?'bd':'bg')+'" style="padding:5px 10px;font-size:11px;" onclick="alternar('+u.id+','+(!u.ativo)+')">'+
+          (u.ativo?'Desativar':'Ativar')+'</button></td>'+
+        '</tr>';
+    }).join('');
+  }catch(e){}
+}
+async function alternar(id,novoAtivo){
+  try{
+    var r=await fetch('/usuarios-api/'+id+'/ativo?ativo='+novoAtivo,{method:'PATCH',headers:authHeaders()});
+    var d=await r.json();
+    if(d.detail){toast(d.detail,'err');return;}
+    toast('Status atualizado.');carregar();
+  }catch(e){toast('Erro de conexão','err');}
+}
+async function criarUsuario(){
+  var nome=document.getElementById('nNome').value.trim();
+  var login=document.getElementById('nLogin').value.trim();
+  var senha=document.getElementById('nSenha').value;
+  var papel=document.getElementById('nPapel').value;
+  var msg=document.getElementById('nMsg');
+  if(!nome||!login||!senha){msg.style.color='var(--rtxt)';msg.textContent='Preencha todos os campos.';return;}
+  try{
+    var r=await fetch('/auth/criar-usuario',{method:'POST',headers:authHeaders(),
+      body:JSON.stringify({nome:nome,login:login,senha:senha,papel:papel})});
+    var d=await r.json();
+    if(d.detail){msg.style.color='var(--rtxt)';msg.textContent=d.detail;return;}
+    msg.style.color='var(--gtxt)';msg.textContent='✓ Usuário "'+d.login+'" criado!';
+    document.getElementById('nNome').value='';document.getElementById('nLogin').value='';document.getElementById('nSenha').value='';
+    carregar();
+  }catch(e){msg.style.color='var(--rtxt)';msg.textContent='Erro de conexão.';}
+}
+carregar();
+</script>
+""" + shell_close() + """
+</body></html>""")
+
+# ══════════════════════════════════════════════════════════════════
+#  PÁGINA: CRIAR PRIMEIRO ADMIN (sem necessidade de login se ninguém existe)
+# ══════════════════════════════════════════════════════════════════
+@app.get("/criar-admin", response_class=HTMLResponse)
+def pg_criar_admin():
+    return ("""<!DOCTYPE html><html lang="pt-BR"><head>""" + _SHARED +
+            """<title>WMS · Criar Administrador</title></head><body>
+<div class="login-wrap">
+<div class="login-box" style="max-width:420px;">
+  <div class="login-logo"><div class="sb-logo">W</div><span>TCruzLoc</span></div>
+  <div class="login-sub">Criação do primeiro administrador do sistema</div>
+  <div class="f"><label>Nome completo</label><input class="fi" id="nome" placeholder="Ex: João Silva" autofocus></div>
+  <div class="f"><label>Login</label><input class="fi" id="login" placeholder="Ex: joao.silva"></div>
+  <div class="f"><label>Senha</label><input class="fi" id="senha" type="password" placeholder="Mínimo 4 caracteres"></div>
+  <button class="btn bg bfull" onclick="criar()">Criar Administrador</button>
+  <div class="err-msg" id="msg"></div>
+</div></div>
+<script>
+async function criar(){
+  var n=document.getElementById('nome').value.trim();
+  var l=document.getElementById('login').value.trim();
+  var s=document.getElementById('senha').value;
+  var m=document.getElementById('msg');
+  if(!n||!l||!s){m.textContent='Preencha todos os campos.';return;}
+  try{
+    var r=await fetch('/auth/criar-usuario',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({nome:n,login:l,senha:s,papel:'ADMIN'})});
+    var d=await r.json();
+    if(d.detail){m.textContent=d.detail;return;}
+    m.style.color='var(--gtxt)';m.textContent='✓ Administrador criado! Redirecionando...';
+    setTimeout(function(){window.location.href='/login';},1200);
+  }catch(e){m.textContent='Erro de conexão.';}
+}
+</script></body></html>""")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1546,29 +1967,25 @@ carregar();
 # ══════════════════════════════════════════════════════════════════
 @app.get("/seed")
 def seed(db: Session = Depends(get_db)):
-    enderecos = [
-        ("R07 014 1","R07","014","1"), ("R07 016 1","R07","016","1"),
-        ("R07 018 1","R07","018","1"), ("R07 020 1","R07","020","1"),
-        ("R07 022 1","R07","022","1"), ("R07 024 1","R07","024","1"),
-        ("R07 026 1","R07","026","1"), ("R07 028 1","R07","028","1"),
-        ("R07 014 1F","R07","014","1F"), ("R07 016 1F","R07","016","1F"),
-        ("R07 018 1F","R07","018","1F"), ("R07 020 1F","R07","020","1F"),
-        ("R07 022 1F","R07","022","1F"), ("R07 024 1F","R07","024","1F"),
-        ("R07 026 1F","R07","026","1F"), ("R07 028 1F","R07","028","1F"),
-    ]
+    enderecos = []
+    for nivel in ["1"]:
+        for pos in range(14, 29, 2):
+            for frente in ["A", "B"]:
+                sufixo = "" if frente == "A" else "F"
+                cod = f"R07 0{pos:02d} {nivel}{sufixo}"
+                enderecos.append((cod, "R07", nivel + sufixo, str(pos), frente))
     criados = 0
-    for cod, rua, pred, and_ in enderecos:
+    for cod, rua, pred, and_, frente in enderecos:
         e = db.query(models.Endereco).filter(models.Endereco.codigo == cod).first()
         if e:
-            e.rua = rua; e.predio = pred; e.andar = and_
-            if not hasattr(e, 'status_ocupacao') or e.status_ocupacao is None:
+            e.rua = rua; e.predio = pred; e.andar = and_; e.frente = frente
+            if not e.status_ocupacao:
                 e.status_ocupacao = "LIVRE"
         else:
             db.add(models.Endereco(
-                codigo=cod, rua=rua, predio=pred, andar=and_,
-                frente="A", comprimento_cm=120, largura_cm=100,
-                altura_cm=200, capacidade_total=1, capacidade_usada=0,
-                status_ocupacao="LIVRE"
+                codigo=cod, rua=rua, predio=pred, andar=and_, frente=frente,
+                comprimento_cm=120, largura_cm=100, altura_cm=200,
+                capacidade_total=1, capacidade_usada=0, status_ocupacao="LIVRE"
             ))
             criados += 1
     db.commit()
@@ -1583,17 +2000,22 @@ def reset_dados(db: Session = Depends(get_db)):
     db.commit()
     return {"status": "ok", "aviso": "Paletes e volumes apagados. Endereços mantidos."}
 
+
 @app.get("/migrar-banco")
 def migrar_banco(db: Session = Depends(get_db)):
-    db.execute(
-        text(
-            "ALTER TABLE enderecos "
-            "ADD COLUMN IF NOT EXISTS status_ocupacao VARCHAR DEFAULT 'LIVRE'"
-        )
-    )
+    comandos = [
+        "ALTER TABLE enderecos ADD COLUMN IF NOT EXISTS status_ocupacao VARCHAR DEFAULT 'LIVRE'",
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS papel VARCHAR DEFAULT 'OPERADOR'",
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS email VARCHAR",
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS telefone VARCHAR",
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS cpf VARCHAR",
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS foto_url VARCHAR",
+        "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS criado_em TIMESTAMP DEFAULT now()",
+    ]
+    for c in comandos:
+        try:
+            db.execute(text(c))
+        except Exception:
+            pass
     db.commit()
-
-    return {
-        "status": "ok",
-        "mensagem": "Banco atualizado com status_ocupacao"
-    }
+    return {"status": "ok", "mensagem": "Banco atualizado com colunas de papel/perfil/CPF/foto."}

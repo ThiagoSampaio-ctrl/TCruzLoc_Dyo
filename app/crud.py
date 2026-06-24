@@ -2,7 +2,7 @@ import re
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app import models, schema
-from app.auth import registrar
+from app.auth import registrar, mascarar_cpf
 
 
 # ═══════════════════════════════════════════════
@@ -36,7 +36,8 @@ def atualizar_status_endereco(db: Session, codigo: str, status: str, usuario=Non
         registrar(db, "STATUS_END", usuario,
                   endereco_de=status_ant, endereco_para=status,
                   detalhe_extra=f"Endereço {codigo}: {status_ant} → {status}")
-    db.commit(); db.refresh(e)
+    db.commit()
+    db.refresh(e)
     return e
 
 
@@ -54,7 +55,8 @@ def detalhes_endereco(db: Session, codigo: str):
     for p in paletes:
         ag: dict[str, list[str]] = {}
         for v in volumes:
-            if v.palete_codigo != p.codigo: continue
+            if v.palete_codigo != p.codigo:
+                continue
             ag.setdefault(v.numero_pedido, []).append(
                 f"{v.volume_atual:03d}/{v.volume_total:03d}")
         resultado["paletes"].append({
@@ -81,20 +83,17 @@ def listar_paletes(db: Session):
 
 
 def criar_ou_usar_palete_manual(db: Session, codigo_palete: str,
-                                 codigo_endereco: str, usuario=None):
+                                codigo_endereco: str, usuario=None):
     codigo_palete   = codigo_palete.strip().upper()
     codigo_endereco = normalizar_endereco(codigo_endereco)
-
     endereco = db.query(models.Endereco).filter(
         models.Endereco.codigo == codigo_endereco).first()
     if not endereco:
         raise HTTPException(status_code=404,
             detail=f"Endereço '{codigo_endereco}' não encontrado. "
                    f"Rode /seed para criar os endereços.")
-
     palete = db.query(models.Palete).filter(
         models.Palete.codigo == codigo_palete).first()
-
     if palete:
         if palete.endereco_codigo != codigo_endereco:
             end_ant = db.query(models.Endereco).filter(
@@ -109,25 +108,29 @@ def criar_ou_usar_palete_manual(db: Session, codigo_palete: str,
             db.commit()
         db.refresh(palete)
         return palete
-
     novo = models.Palete(codigo=codigo_palete, volume_total=0,
                          endereco_codigo=codigo_endereco, status="EM USO")
     endereco.capacidade_usada = (endereco.capacidade_usada or 0) + 1
-    db.add(novo); db.commit(); db.refresh(novo)
+    db.add(novo)
+    db.commit()
+    db.refresh(novo)
     return novo
 
 
 def criar_palete_auto(db: Session, palete: schema.PaleteCriar):
     existente = db.query(models.Palete).filter(
         models.Palete.codigo == palete.codigo).first()
-    if existente: return existente
+    if existente:
+        return existente
     for e in db.query(models.Endereco).order_by(models.Endereco.id).all():
         if not db.query(models.Palete).filter(
                 models.Palete.endereco_codigo == e.codigo).first():
             novo = models.Palete(codigo=palete.codigo, volume_total=0,
                                  endereco_codigo=e.codigo, status="EM USO")
             e.capacidade_usada = 1
-            db.add(novo); db.commit(); db.refresh(novo)
+            db.add(novo)
+            db.commit()
+            db.refresh(novo)
             return novo
     raise HTTPException(status_code=400, detail="Nenhum endereço disponível")
 
@@ -142,7 +145,6 @@ def criar_pedido_volume(db: Session, pedido: schema.PedidoVolumeCriar, usuario=N
     if not palete:
         raise HTTPException(status_code=404,
             detail=f"Palete '{pedido.palete_codigo}' não encontrado.")
-
     dup = db.query(models.PedidoVolume).filter(
         models.PedidoVolume.numero_pedido == pedido.numero_pedido,
         models.PedidoVolume.volume_atual  == pedido.volume_atual,
@@ -153,7 +155,6 @@ def criar_pedido_volume(db: Session, pedido: schema.PedidoVolumeCriar, usuario=N
         raise HTTPException(status_code=400,
             detail=f"Volume {pedido.volume_atual:03d}/{pedido.volume_total:03d} "
                    f"do pedido {pedido.numero_pedido} já está neste palete.")
-
     novo = models.PedidoVolume(
         numero_pedido=pedido.numero_pedido,
         volume_atual=pedido.volume_atual,
@@ -169,7 +170,8 @@ def criar_pedido_volume(db: Session, pedido: schema.PedidoVolumeCriar, usuario=N
                   volume_total=pedido.volume_total,
                   palete_codigo=pedido.palete_codigo,
                   endereco_para=palete.endereco_codigo)
-    db.commit(); db.refresh(novo)
+    db.commit()
+    db.refresh(novo)
     return novo
 
 
@@ -197,6 +199,23 @@ def listar_pedidos_volume(db: Session):
                       models.PedidoVolume.volume_atual).all())
 
 
+def pedidos_no_endereco(db: Session, codigo: str):
+    """Lista resumida de pedidos únicos atualmente naquele endereço (usado no painel do mapa)."""
+    codigo = normalizar_endereco(codigo)
+    registros = (db.query(models.PedidoVolume)
+                 .filter(models.PedidoVolume.endereco_codigo == codigo)
+                 .order_by(models.PedidoVolume.numero_pedido,
+                           models.PedidoVolume.volume_atual).all())
+    ag: dict[str, dict] = {}
+    for r in registros:
+        if r.numero_pedido not in ag:
+            ag[r.numero_pedido] = {"pedido": r.numero_pedido,
+                                   "atual": r.volume_atual, "total": r.volume_total,
+                                   "qtd": 0}
+        ag[r.numero_pedido]["qtd"] += 1
+    return list(ag.values())
+
+
 def deletar_pedido_volume(db: Session, volume_id: int, usuario=None):
     v = db.query(models.PedidoVolume).filter(
         models.PedidoVolume.id == volume_id).first()
@@ -207,7 +226,8 @@ def deletar_pedido_volume(db: Session, volume_id: int, usuario=None):
                   numero_pedido=v.numero_pedido,
                   volume_atual=v.volume_atual, volume_total=v.volume_total,
                   palete_codigo=v.palete_codigo, endereco_de=v.endereco_codigo)
-    db.delete(v); db.commit()
+    db.delete(v)
+    db.commit()
     return {"ok": True}
 
 
@@ -238,13 +258,15 @@ def transferir_volumes(db: Session, dados: schema.TransferirVolumes, usuario=Non
         palete_dest = models.Palete(codigo=novo_pal, volume_total=0,
                                     endereco_codigo=novo_end, status="EM USO")
         endereco.capacidade_usada = (endereco.capacidade_usada or 0) + 1
-        db.add(palete_dest); db.flush()
+        db.add(palete_dest)
+        db.flush()
     volumes = db.query(models.PedidoVolume).filter(
         models.PedidoVolume.id.in_(dados.ids)).all()
     movidos = 0
     for v in volumes:
         end_ant, pal_ant = v.endereco_codigo, v.palete_codigo
-        v.palete_codigo = novo_pal; v.endereco_codigo = novo_end
+        v.palete_codigo = novo_pal
+        v.endereco_codigo = novo_end
         if usuario:
             registrar(db, "TRANSFERENCIA", usuario,
                       numero_pedido=v.numero_pedido,
@@ -265,7 +287,8 @@ def limpar_pedidos_duplicados(db: Session):
     for p in todos:
         chave = (p.numero_pedido, p.volume_atual, p.volume_total, p.palete_codigo)
         if chave in vistos:
-            db.delete(p); removidos += 1
+            db.delete(p)
+            removidos += 1
         else:
             vistos.add(chave)
     db.commit()
@@ -276,3 +299,76 @@ def listar_historico(db: Session, limit: int = 500):
     return (db.query(models.Historico)
             .order_by(models.Historico.id.desc())
             .limit(limit).all())
+
+
+# ═══════════════════════════════════════════════
+#  PERFIL DE USUÁRIO
+# ═══════════════════════════════════════════════
+
+def perfil_para_resposta(u: models.Usuario, revelar_cpf: bool = False) -> dict:
+    return {
+        "id": u.id,
+        "nome": u.nome,
+        "login": u.login,
+        "papel": u.papel or "OPERADOR",
+        "email": u.email,
+        "telefone": u.telefone,
+        "cpf_mascarado": (u.cpf if revelar_cpf else mascarar_cpf(u.cpf)),
+        "foto_url": u.foto_url,
+        "ativo": u.ativo,
+    }
+
+
+def listar_usuarios(db: Session):
+    """Para admins — lista todos os usuários com perfil mascarado."""
+    return db.query(models.Usuario).order_by(models.Usuario.nome).all()
+
+
+def buscar_usuario_por_id(db: Session, usuario_id: int) -> models.Usuario:
+    u = db.query(models.Usuario).filter(models.Usuario.id == usuario_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    return u
+
+
+def atualizar_perfil(db: Session, usuario: models.Usuario,
+                     dados: schema.PerfilAtualizar) -> models.Usuario:
+    if dados.nome is not None:
+        usuario.nome = dados.nome
+    if dados.email is not None:
+        usuario.email = dados.email
+    if dados.telefone is not None:
+        usuario.telefone = dados.telefone
+    if dados.cpf is not None:
+        usuario.cpf = dados.cpf
+    if dados.foto_url is not None:
+        usuario.foto_url = dados.foto_url
+    db.commit()
+    db.refresh(usuario)
+    return usuario
+
+
+def alternar_ativo_usuario(db: Session, usuario_id: int, ativo: bool) -> models.Usuario:
+    u = buscar_usuario_por_id(db, usuario_id)
+    u.ativo = 1 if ativo else 0
+    db.commit()
+    db.refresh(u)
+    return u
+
+
+# ═══════════════════════════════════════════════
+#  DASHBOARD / MÉTRICAS
+# ═══════════════════════════════════════════════
+
+def metricas_dashboard(db: Session) -> dict:
+    enderecos = listar_enderecos(db)
+    livres    = sum(1 for e in enderecos if (e.status_ocupacao or "LIVRE") == "LIVRE")
+    parciais  = sum(1 for e in enderecos if e.status_ocupacao == "PARCIAL")
+    ocupados  = sum(1 for e in enderecos if e.status_ocupacao == "OCUPADO")
+    bloqueados= sum(1 for e in enderecos if e.status_ocupacao == "BLOQUEADO")
+    return {
+        "livres": livres, "parciais": parciais,
+        "ocupados": ocupados, "bloqueados": bloqueados,
+        "total": len(enderecos),
+        "volumes_ativos": db.query(models.PedidoVolume).count(),
+    }

@@ -7,16 +7,16 @@ class Endereco(Base):
     id               = Column(Integer, primary_key=True, index=True)
     codigo           = Column(String(30), unique=True, index=True, nullable=False)
     rua              = Column(String(20), nullable=False)
-    predio           = Column(String(20), nullable=False)
-    andar            = Column(String(10), nullable=False)
+    predio           = Column(String(20), nullable=False)   # nível
+    andar            = Column(String(10), nullable=False)   # posição
     frente           = Column(String(5),  default="A")
     comprimento_cm   = Column(Integer, default=120)
     largura_cm       = Column(Integer, default=100)
     altura_cm        = Column(Integer, default=200)
     capacidade_total = Column(Integer, default=1)
     capacidade_usada = Column(Integer, default=0)
-    # LIVRE | PARCIAL | OCUPADO — definido manualmente pelo operador
-    status_ocupacao  = Column(String(10), default="LIVRE")
+    # LIVRE | PARCIAL | OCUPADO | BLOQUEADO — definido manualmente pelo operador
+    status_ocupacao  = Column(String(12), default="LIVRE")
 
 
 class TipoCaixa(Base):
@@ -50,12 +50,19 @@ class PedidoVolume(Base):
 
 class Usuario(Base):
     __tablename__ = "usuarios"
-    id         = Column(Integer, primary_key=True, index=True)
-    nome       = Column(String(60), nullable=False)
-    login      = Column(String(40), unique=True, index=True, nullable=False)
-    senha_hash = Column(String(128), nullable=False)
-    ativo      = Column(Integer, default=1)
-    criado_em  = Column(DateTime(timezone=True), server_default=func.now())
+    id          = Column(Integer, primary_key=True, index=True)
+    nome        = Column(String(60), nullable=False)
+    login       = Column(String(40), unique=True, index=True, nullable=False)
+    senha_hash  = Column(String(128), nullable=False)
+    ativo       = Column(Integer, default=1)
+    # papel: ADMIN | OPERADOR — controla quem vê/edita o perfil de outros
+    papel       = Column(String(20), default="OPERADOR")
+    # ── dados de perfil (sensíveis) ──
+    email       = Column(String(120), nullable=True)
+    telefone    = Column(String(20),  nullable=True)
+    cpf         = Column(String(14),  nullable=True)   # armazenado mascarável; ver schema p/ exibição
+    foto_url    = Column(String(500), nullable=True)   # data URL (base64) ou link
+    criado_em   = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class Sessao(Base):
