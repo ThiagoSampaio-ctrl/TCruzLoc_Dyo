@@ -332,10 +332,35 @@ input[type=checkbox]{width:14px;height:14px;accent-color:var(--green);cursor:poi
 .err-msg{color:var(--rtxt);font-size:12px;margin-top:8px;min-height:18px;}
 
 @media (max-width: 900px){
-  .sidebar{position:fixed;left:-100%;height:100vh;transition:.2s;box-shadow:0 0 40px #000a;}
-  .sidebar.open{left:0;}
-  .content{padding:16px;}
-  .topbar{padding:12px 16px;}
+
+  .sidebar{
+    position:fixed;
+    left:-100%;
+    top:0;
+    height:100vh;
+    transition:.2s;
+    box-shadow:0 0 40px #000a;
+    z-index:9999;
+  }
+
+  .sidebar.open{
+    left:0;
+  }
+
+  #menuBtn{
+    display:block !important;
+  }
+
+  .content{
+    padding:16px;
+  }
+
+  .topbar{
+    padding:12px 16px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
 }
 </style>
 """
@@ -361,6 +386,21 @@ _SIDEBAR_TPL = """<div class="sidebar" id="sidebar">
 </div>"""
 
 _TOPBAR_TPL = """<div class="topbar">
+
+<button id="menuBtn" onclick="toggleMenu()" style="
+display:none;
+background:none;
+border:none;
+font-size:24px;
+color:white;
+cursor:pointer;
+margin-right:10px;
+">
+☰
+</button>
+
+  <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+
   <div class="tb-title">
     <div class="tb-icon" style="background:{iconbg};">{icon}</div>
     <div>
@@ -407,7 +447,14 @@ _TOPBAR_TPL = """<div class="topbar">
   window.toast=function(msg,t){var el=document.getElementById('toast');
     el.textContent=msg;el.className='show '+(t||'ok');
     clearTimeout(el._t);el._t=setTimeout(()=>el.className='',3000);};
-  window.sair=function(){localStorage.removeItem('wms_token');
+ window.toggleMenu=function(){
+  const sb=document.getElementById('sidebar');
+
+  if(sb){
+    sb.classList.toggle('open');
+  }
+};
+   window.sair=function(){localStorage.removeItem('wms_token');
     localStorage.removeItem('wms_user');localStorage.removeItem('wms_papel');
     localStorage.removeItem('wms_foto');window.location.href='/login';};
 })();
