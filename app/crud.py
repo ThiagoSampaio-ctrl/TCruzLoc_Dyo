@@ -156,12 +156,14 @@ def criar_pedido_volume(db: Session, pedido: schema.PedidoVolumeCriar, usuario=N
             detail=f"Volume {pedido.volume_atual:03d}/{pedido.volume_total:03d} "
                    f"do pedido {pedido.numero_pedido} já está neste palete.")
     novo = models.PedidoVolume(
-        numero_pedido=pedido.numero_pedido,
-        volume_atual=pedido.volume_atual,
-        volume_total=pedido.volume_total,
-        palete_codigo=pedido.palete_codigo,
-        endereco_codigo=palete.endereco_codigo,
-    )
+                numero_pedido=pedido.numero_pedido,
+                 volume_atual=pedido.volume_atual,
+                 volume_total=pedido.volume_total,
+                 palete_codigo=pedido.palete_codigo,
+                 endereco_codigo=palete.endereco_codigo,
+                 status="EM_ANDAMENTO"
+)
+    
     db.add(novo)
     if usuario:
         registrar(db, "CADASTRO", usuario,
@@ -174,22 +176,53 @@ def criar_pedido_volume(db: Session, pedido: schema.PedidoVolumeCriar, usuario=N
     db.refresh(novo)
     return novo
 
-
 def buscar_pedido(db: Session, numero_pedido: str):
     numero_pedido = numero_pedido.strip().upper()
-    registros = (db.query(models.PedidoVolume)
-                 .filter(models.PedidoVolume.numero_pedido == numero_pedido)
-                 .order_by(models.PedidoVolume.palete_codigo,
-                           models.PedidoVolume.volume_atual).all())
+
+    registros = (
+        db.query(models.PedidoVolume)
+        .filter(models.PedidoVolume.numero_pedido == numero_pedido)
+        .order_by(
+            models.PedidoVolume.palete_codigo,
+            models.PedidoVolume.volume_atual
+        )
+        .all()
+    )
+
     if not registros:
-        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+        raise HTTPException(
+            status_code=404,
+            detail="Pedido não encontrado"
+        )
+
     ag: dict[tuple, list[str]] = {}
+
     for r in registros:
-        ag.setdefault((r.endereco_codigo, r.palete_codigo), []).append(
-            f"{r.volume_atual:03d}/{r.volume_total:03d}")
-    return {"pedido": numero_pedido,
-            "enderecos": [{"endereco": e, "palete": p, "volumes": v}
-                          for (e, p), v in ag.items()]}
+
+        endereco_exibicao = (
+            "EM ANDAMENTO"
+            if r.status == "EM_ANDAMENTO"
+            else r.endereco_codigo
+        )
+
+        ag.setdefault(
+            (endereco_exibicao, r.palete_codigo),
+            []
+        ).append(
+            f"{r.volume_atual:03d}/{r.volume_total:03d}"
+        )
+
+    return {
+        "pedido": numero_pedido,
+        "enderecos": [
+            {
+                "endereco": e,
+                "palete": p,
+                "volumes": v
+            }
+            for (e, p), v in ag.items()
+        ]
+    }
 
 
 def listar_pedidos_volume(db: Session):

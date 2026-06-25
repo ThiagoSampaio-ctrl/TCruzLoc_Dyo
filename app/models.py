@@ -40,6 +40,7 @@ class Palete(Base):
 
 class PedidoVolume(Base):
     __tablename__ = "pedidos_volumes"
+
     id              = Column(Integer, primary_key=True, index=True)
     numero_pedido   = Column(String(50), index=True, nullable=False)
     volume_atual    = Column(Integer, nullable=False)
@@ -47,6 +48,7 @@ class PedidoVolume(Base):
     palete_codigo   = Column(String(30), ForeignKey("paletes.codigo"), nullable=False)
     endereco_codigo = Column(String(30), ForeignKey("enderecos.codigo"), nullable=True)
 
+    status          = Column(String(20), default="EM_ANDAMENTO")
 
 class Usuario(Base):
     __tablename__ = "usuarios"

@@ -2058,6 +2058,7 @@ def migrar_banco(db: Session = Depends(get_db)):
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS cpf VARCHAR",
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS foto_url VARCHAR",
         "ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS criado_em TIMESTAMP DEFAULT now()",
+        "ALTER TABLE pedidos_volumes ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'EM_ANDAMENTO'",
     ]
 
     erros = []
@@ -2073,4 +2074,39 @@ def migrar_banco(db: Session = Depends(get_db)):
     return {
         "status": "ok",
         "erros": erros
+    }
+
+@app.post("/paletes/finalizar/{codigo_palete}")
+def finalizar_palete(
+    codigo_palete: str,
+    db: Session = Depends(get_db)
+):
+
+    palete = (
+        db.query(models.Palete)
+        .filter(models.Palete.codigo == codigo_palete)
+        .first()
+    )
+
+    if not palete:
+        raise HTTPException(
+            status_code=404,
+            detail="Palete não encontrado"
+        )
+
+    palete.status = "FINALIZADO"
+
+    db.query(models.PedidoVolume).filter(
+        models.PedidoVolume.palete_codigo == codigo_palete
+    ).update(
+        {"status": "FINALIZADO"},
+        synchronize_session=False
+    )
+
+    db.commit()
+
+    return {
+        "ok": True,
+        "palete": codigo_palete,
+        "status": "FINALIZADO"
     }
