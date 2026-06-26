@@ -9,7 +9,7 @@ from app import models, schema, crud
 from app.auth import criar_usuario, fazer_login, get_usuario_atual, exigir_admin
 
 Base.metadata.create_all(bind=engine)
-app = FastAPI(title="WMS — TCruzLoc", version="4.0")
+app = FastAPI(title="WMS — WALZE WMS", version="4.0")
 
 
 def _load_icon(name):
@@ -27,7 +27,7 @@ _ICON_192 = _load_icon('icon-192.png')
 _ICON_512 = _load_icon('icon-512.png')
 
 _MANIFEST = {
-    "name": "WMS TCruzLoc", "short_name": "TCruzLoc",
+    "name": "WMS WALZE", "short_name": "WALZE WMS",
     "description": "Sistema WMS", "start_url": "/app",
     "display": "standalone", "background_color": "#0a0e14",
     "theme_color": "#22c55e", "orientation": "portrait-primary",
@@ -70,7 +70,7 @@ _SHARED = """
 <meta name="theme-color" content="#22c55e">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="TCruzLoc">
+<meta name="apple-mobile-web-app-title" content="WALZE WMS">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -368,7 +368,7 @@ input[type=checkbox]{width:14px;height:14px;accent-color:var(--green);cursor:poi
 _SIDEBAR_TPL = """<div class="sidebar" id="sidebar">
   <div class="sb-brand">
     <div class="sb-logo">W</div>
-    <div class="sb-name">TCruzLoc</div>
+    <div class="sb-name">WALZE WMS</div>
   </div>
   <div class="sb-nav">
     <a class="sb-link{a}" href="/app"><span class="ic">⬜</span>Dashboard</a>
@@ -583,7 +583,7 @@ def dashboard_api(db: Session = Depends(get_db)):
 #  API ROTAS — armazém, paletes, pedidos
 # ══════════════════════════════════════════════════════════════════
 @app.get("/")
-def root(): return {"status": "ok", "app": "WMS TCruzLoc v4"}
+def root(): return {"status": "ok", "app": "WMS WALZE WMS v4"}
 
 @app.get("/health")
 def health():
@@ -690,7 +690,7 @@ def pg_login():
 </head><body>
 <div class="login-wrap">
 <div class="login-box">
-  <div class="login-logo"><div class="sb-logo">W</div><span>TCruzLoc</span></div>
+  <div class="login-logo"><div class="sb-logo">W</div><span>WALZE WMS</span></div>
   <div class="login-sub">Sistema de Gerenciamento de Armazém</div>
   <div class="f"><label>Usuário</label>
     <input class="fi" id="lg" placeholder="seu.login" autofocus
@@ -1770,7 +1770,7 @@ function exportarExcel(){
     ws['!cols']=[{wch:18},{wch:18},{wch:14},{wch:12},{wch:10},{wch:10},{wch:14},{wch:14},{wch:30}];
     var wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,'Historico');
-    XLSX.writeFile(wb,'historico_tcruzloc_'+dataStr+'_'+horaStr+'.xlsx');
+    XLSX.writeFile(wb,'historico_walze_'+dataStr+'_'+horaStr+'.xlsx');
     filtrar();atualizarTagFiltro();
     toast('✓ Relatório baixado: '+fd.length+' registro(s)');
   }catch(e){exportarCSVFallback(linhas,dataStr,horaStr);}
@@ -1783,7 +1783,7 @@ function exportarCSVFallback(linhas,dataStr,horaStr){
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a');
-  a.href=url;a.download='historico_tcruzloc_'+dataStr+'_'+horaStr+'.csv';
+  a.href=url;a.download='historico_walze_'+dataStr+'_'+horaStr+'.csv';
   document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
   filtrar();atualizarTagFiltro();
   toast('✓ Relatório baixado em CSV (Excel indisponível): '+linhas.length+' registro(s)','ok');
@@ -1982,7 +1982,7 @@ def pg_criar_admin():
             """<title>WMS · Criar Administrador</title></head><body>
 <div class="login-wrap">
 <div class="login-box" style="max-width:420px;">
-  <div class="login-logo"><div class="sb-logo">W</div><span>TCruzLoc</span></div>
+  <div class="login-logo"><div class="sb-logo">W</div><span>WALZE WMS</span></div>
   <div class="login-sub">Criação do primeiro administrador do sistema</div>
   <div class="f"><label>Nome completo</label><input class="fi" id="nome" placeholder="Ex: João Silva" autofocus></div>
   <div class="f"><label>Login</label><input class="fi" id="login" placeholder="Ex: joao.silva"></div>
