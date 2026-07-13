@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
-from app.pages._shared import SHARED, shell_open, shell_close
+from app.pages.shared import SHARED, shell_open, shell_close
 
 router = APIRouter()
 
