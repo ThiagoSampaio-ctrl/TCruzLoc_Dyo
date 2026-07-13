@@ -7,7 +7,6 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import engine, Base, get_db, ping_db
-from app import models
 
 # ── Routers de API ──────────────────────────────────────────────────
 from app.api.auth     import router as router_auth
