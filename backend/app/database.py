@@ -1,6 +1,7 @@
 import os
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, event
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import StaticPool
 
 _url = os.getenv("DATABASE_URL", "sqlite:///./wms.db")
 if _url.startswith("postgres://"):
@@ -15,7 +16,22 @@ engine = create_engine(
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+
+# Base com extend_existing habilitado globalmente — evita erro de MetaData duplicada
+# quando múltiplos workers/imports carregam os models
+class _Base:
+    """Mixin que adiciona extend_existing=True automaticamente a todas as tabelas."""
+    @classmethod
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if hasattr(cls, '__tablename__') and not hasattr(cls, '__table_args__'):
+            cls.__table_args__ = {'extend_existing': True}
+        elif hasattr(cls, '__tablename__') and hasattr(cls, '__table_args__'):
+            if isinstance(cls.__table_args__, dict):
+                cls.__table_args__['extend_existing'] = True
+
+Base = declarative_base(cls=_Base)
+
 
 def get_db():
     db = SessionLocal()
@@ -23,6 +39,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
 def ping_db() -> bool:
     try:
