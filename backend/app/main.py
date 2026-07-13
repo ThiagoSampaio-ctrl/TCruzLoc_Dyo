@@ -6,7 +6,15 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+# ── IMPORTANTE: importar models ANTES de qualquer router ────────────
+# Isso garante que as tabelas sejam registradas uma única vez no MetaData
 from app.database import engine, Base, get_db, ping_db
+from app import models  # noqa: F401 — registra todas as tabelas no MetaData
+
+# Cria tabelas no banco ANTES de registrar os routers
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="WMS — WALZE WMS", version="4.0")
 
 # ── Routers de API ──────────────────────────────────────────────────
 from app.api.auth     import router as router_auth
@@ -22,17 +30,11 @@ from app.pages.historico  import router as page_historico
 from app.pages.perfil     import router as page_perfil
 from app.pages.usuarios   import router as page_usuarios
 
-# ── Inicialização ───────────────────────────────────────────────────
-Base.metadata.create_all(bind=engine)
-
-app = FastAPI(title="WMS — WALZE WMS", version="4.0")
-
 # ── Registro de routers ─────────────────────────────────────────────
 app.include_router(router_auth)
 app.include_router(router_usuarios)
 app.include_router(router_paletes)
 app.include_router(router_pedidos)
-
 app.include_router(page_dashboard)
 app.include_router(page_conferente)
 app.include_router(page_operacao)
@@ -180,8 +182,8 @@ def migrar_banco(db: Session = Depends(get_db)):
     return {"status": "ok", "erros": erros}
 
 
-# ── Página de Login (única página que fica no main.py) ──────────────
-from app.pages._shared import SHARED
+# ── Páginas que ficam no main.py ────────────────────────────────────
+from app.pages._shared import SHARED, shell_open, shell_close
 
 @app.get("/login", response_class=HTMLResponse)
 def pg_login():
@@ -224,8 +226,6 @@ async function entrar(){{
 if(localStorage.getItem('wms_token'))window.location.href='/app';
 </script></body></html>"""
 
-# ── Página: Gerenciar Volumes ────────────────────────────────────────
-from app.pages._shared import shell_open, shell_close
 
 @app.get("/gerenciar-volumes", response_class=HTMLResponse)
 def pg_gerenciar():
@@ -345,7 +345,7 @@ carregar();
 </script>
 """ + shell_close() + "</body></html>")
 
-# ── Página: Endereços ────────────────────────────────────────────────
+
 @app.get("/enderecos-page", response_class=HTMLResponse)
 def pg_enderecos():
     return ("""<!DOCTYPE html><html lang="pt-BR"><head>""" + SHARED +
@@ -392,14 +392,10 @@ function renderGrid(){
     div.innerHTML='<div style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--txt);margin-bottom:8px;">'+e.codigo+'</div>'+
       '<span class="bk '+c.cls+'" style="margin-bottom:12px;display:inline-block;">'+st+'</span>'+
       '<div style="display:flex;flex-direction:column;gap:5px;margin-top:10px;">'+
-      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;LIVRE&quot;)" class="btn" style="padding:6px;font-size:11px;'+
-        'background:'+(st==='LIVRE'?'var(--green)':'var(--gdim)')+';color:'+(st==='LIVRE'?'#04130a':'var(--gtxt)')+';border:1px solid var(--green);">● Livre</button>'+
-      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;PARCIAL&quot;)" class="btn" style="padding:6px;font-size:11px;'+
-        'background:'+(st==='PARCIAL'?'var(--amber)':'var(--adim)')+';color:'+(st==='PARCIAL'?'#1a1200':'var(--atxt)')+';border:1px solid var(--amber);">● Parcial</button>'+
-      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;OCUPADO&quot;)" class="btn" style="padding:6px;font-size:11px;'+
-        'background:'+(st==='OCUPADO'?'var(--red)':'var(--rdim)')+';color:'+(st==='OCUPADO'?'#fff':'var(--rtxt)')+';border:1px solid var(--red);">● Ocupado</button>'+
-      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;BLOQUEADO&quot;)" class="btn" style="padding:6px;font-size:11px;'+
-        'background:'+(st==='BLOQUEADO'?'var(--br2)':'var(--s2)')+';color:var(--txt3);border:1px solid var(--br2);">● Bloqueado</button>'+
+      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;LIVRE&quot;)" class="btn" style="padding:6px;font-size:11px;background:'+(st==='LIVRE'?'var(--green)':'var(--gdim)')+';color:'+(st==='LIVRE'?'#04130a':'var(--gtxt)')+';border:1px solid var(--green);">● Livre</button>'+
+      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;PARCIAL&quot;)" class="btn" style="padding:6px;font-size:11px;background:'+(st==='PARCIAL'?'var(--amber)':'var(--adim)')+';color:'+(st==='PARCIAL'?'#1a1200':'var(--atxt)')+';border:1px solid var(--amber);">● Parcial</button>'+
+      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;OCUPADO&quot;)" class="btn" style="padding:6px;font-size:11px;background:'+(st==='OCUPADO'?'var(--red)':'var(--rdim)')+';color:'+(st==='OCUPADO'?'#fff':'var(--rtxt)')+';border:1px solid var(--red);">● Ocupado</button>'+
+      '<button onclick="setStatus(&quot;'+e.codigo+'&quot;,&quot;BLOQUEADO&quot;)" class="btn" style="padding:6px;font-size:11px;background:'+(st==='BLOQUEADO'?'var(--br2)':'var(--s2)')+';color:var(--txt3);border:1px solid var(--br2);">● Bloqueado</button>'+
       '</div>';
     g.appendChild(div);
   });
