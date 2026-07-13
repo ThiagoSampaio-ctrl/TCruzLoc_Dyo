@@ -193,7 +193,7 @@ def migrar_banco(db: Session = Depends(get_db)):
 
 
 # ── Páginas que ficam no main.py ────────────────────────────────────
-from app.pages._shared import SHARED, shell_open, shell_close
+from app.pages.shared import SHARED, shell_open, shell_close
 
 @app.get("/login", response_class=HTMLResponse)
 def pg_login():
