@@ -160,6 +160,16 @@ def reset_dados(db: Session = Depends(get_db)):
     db.commit()
     return {"status": "ok", "aviso": "Paletes e volumes apagados. Endereços mantidos."}
 
+@app.get("/promover-admin-thiagosi")
+def promover_admin(db: Session = Depends(get_db)):
+    """Rota temporária — promove thiagosi a ADMIN. Remover após uso."""
+    u = db.query(models.Usuario).filter(models.Usuario.login == "thiagosi").first()
+    if not u:
+        return {"erro": "Usuário thiagosi não encontrado"}
+    u.papel = "ADMIN"
+    db.commit()
+    return {"ok": True, "usuario": u.nome, "papel": u.papel}
+
 @app.get("/migrar-banco")
 def migrar_banco(db: Session = Depends(get_db)):
     comandos = [
@@ -183,7 +193,7 @@ def migrar_banco(db: Session = Depends(get_db)):
 
 
 # ── Páginas que ficam no main.py ────────────────────────────────────
-from app.pages.shared import SHARED, shell_open, shell_close
+from app.pages._shared import SHARED, shell_open, shell_close
 
 @app.get("/login", response_class=HTMLResponse)
 def pg_login():
