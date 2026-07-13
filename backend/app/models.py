@@ -4,6 +4,7 @@ from app.database import Base
 
 class Endereco(Base):
     __tablename__ = "enderecos"
+    __table_args__ = {'extend_existing': True}
     id               = Column(Integer, primary_key=True, index=True)
     codigo           = Column(String(30), unique=True, index=True, nullable=False)
     rua              = Column(String(20), nullable=False)
@@ -20,6 +21,7 @@ class Endereco(Base):
 
 class TipoCaixa(Base):
     __tablename__ = "tipos_caixa"
+    __table_args__ = {'extend_existing': True}
     id             = Column(Integer, primary_key=True, index=True)
     nome           = Column(String(50), unique=True, index=True, nullable=False)
     comprimento_cm = Column(Integer)
@@ -30,6 +32,7 @@ class TipoCaixa(Base):
 
 class Palete(Base):
     __tablename__ = "paletes"
+    __table_args__ = {'extend_existing': True}
     id              = Column(Integer, primary_key=True, index=True)
     codigo          = Column(String(30), unique=True, index=True, nullable=False)
     volume_total    = Column(Integer, default=0)
@@ -39,6 +42,7 @@ class Palete(Base):
 
 class PedidoVolume(Base):
     __tablename__ = "pedidos_volumes"
+    __table_args__ = {'extend_existing': True}
     id              = Column(Integer, primary_key=True, index=True)
     numero_pedido   = Column(String(50), index=True, nullable=False)
     volume_atual    = Column(Integer, nullable=False)
@@ -50,6 +54,7 @@ class PedidoVolume(Base):
 
 class Usuario(Base):
     __tablename__ = "usuarios"
+    __table_args__ = {'extend_existing': True}
     id         = Column(Integer, primary_key=True, index=True)
     nome       = Column(String(60), nullable=False)
     login      = Column(String(40), unique=True, index=True, nullable=False)
@@ -65,6 +70,7 @@ class Usuario(Base):
 
 class Sessao(Base):
     __tablename__ = "sessoes"
+    __table_args__ = {'extend_existing': True}
     id         = Column(Integer, primary_key=True, index=True)
     token      = Column(String(64), unique=True, index=True, nullable=False)
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
@@ -74,6 +80,7 @@ class Sessao(Base):
 
 class Historico(Base):
     __tablename__ = "historico"
+    __table_args__ = {'extend_existing': True}
     id            = Column(Integer, primary_key=True, index=True)
     usuario_id    = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     usuario_nome  = Column(String(60), nullable=True)
